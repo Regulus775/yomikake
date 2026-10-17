@@ -400,6 +400,7 @@ iOS Safari silently ignores both `document.documentElement.scrollLeft` assignmen
 | `EPUB_AXIS` | iframe → parent | `{axis: 'h'\|'v'}` sent by publisher-mode iframe from `applyInit()`; parent stores in `state.publisherAxis` for `isVerticalAxis()` |
 | `EPUB_READY` | iframe → parent | `{seq: number}` sent by iframe after `applyInit()` completes; parent clears `_isRendering` and applies any pending scroll |
 | `EPUB_KEY` | iframe → parent | `{key, shiftKey, ctrlKey, metaKey, altKey, repeat}` — 本文クリックで iframe にフォーカスが移った後もキー操作を効かせるための中継（v2.20.0）。iframe 側はホワイトリストのキーだけを `preventDefault()` して送る。親は `reclaimKeyFocus()` でフォーカスを引き取ってから `handleKey()` に流す。 |
+| `EPUB_SWIPE` | iframe → parent | `{direction: 1\|-1}` — 上下スワイプ（上へ＝1）。**`yomikake.html` のみ**。判定は `SHARED_TAIL`、親は `runTapAction('next'/'prev')` に流す（§上下スワイプでページ送り）。iOS 版は iframe 内で直接 `doScroll` するので送らない |
 | `EPUB_TAP` | iframe → parent | `{xr: 0–1, yr: 0–1}` tap position ratio, sent when a non-link tap occurs in the iframe (text-selection taps excluded). Parent routes it through `runTapAction(tapZoneAction(xr, yr))` (v2.8.0; center → `showTapMenu()` since v2.8.1) — see 「タップページ送り」 below. FXL mode has no iframe, so `handleFxlTap()` runs an equivalent 320 ms single-tap-confirm timer (canceled by a 2nd tap = zoom toggle) and calls the same pair with coordinates taken from `#fxl-container.getBoundingClientRect()`. |
 
 ### タップページ送り・操作ガイド・起動時自動オープン（v2.8.0・両ファイル共通）
@@ -430,6 +431,22 @@ iOS Safari silently ignores both `document.documentElement.scrollLeft` assignmen
 - **起動時自動オープン（`autoOpenLastBook()`）** — `state.autoOpenLast`（**デフォルト ON**）。`_idbGetAllKeys().then` の末尾（`_cachedKeys` 確定後）から呼ぶ。IDB の `.then` はスクリプト同期実行の後に走るので `loadSettings()` も `handleSharedFile()` の同期部も完了済み。発動条件は「設定 ON / `_sharedFlowActive` でない / `!state.epub` / `epub_last_book` あり / **キャッシュヒット** / 読了済でない（`spineIdx >= spineCount-1 && ratio > 0.9`）」。
 - **ピッカー禁止** — `loadEpubFromCache(bookKey, opts)` に `opts.noPicker` を追加し、**3 箇所**の `openFilePicker()` フォールバックをすべてガードする。ユーザージェスチャ無しではピッカーを開けないため、失敗時は黙って読みかけリストに留まる。
 - **`_sharedFlowActive`** — `handleSharedFile()` の同期部で、`history.replaceState`（クエリ除去）**より前**に立てる。後から `location.search` を見る方式は不可（自動オープン実行時には既にクエリが消えている）。**`yomikake_ios.html` は Web Share Target 非対応なので宣言のみで常に false**。
+
+### 上下スワイプでページ送り（両ファイル共通・設計書 `design_swipe_paging.md`）
+
+`SWIPE_MIN_PX`, `SWIPE_MIN_RATIO`, `SWIPE_AXIS_RATIO`, `swipeDirection`, `changeSwipePaging`, `state.swipePaging`（`'vertical'` 既定 / `'all'` / `'off'`）, `EPUB_SWIPE`（`yomikake.html` のみ）, `SWIPE_V` / `swipeV`（`yomikake_ios.html` の注入テンプレート）, `attachFxlSwipe`（`yomikake.html`）。
+
+- **目的は Android アプリ volumetap のドラッグ送り**（音量キー → 画面中央を縦に 63% なぞる操作を注入）。yomikake は PWA なので volumetap からは Chrome に見え、Chrome の割り当てをドラッグにすると yomikake にもドラッグが来る。上下スワイプで送れれば、**Chrome の割り当て 1 本で yomikake と一般サイトの両方を音量キーで読める**
+- **書字方向によらず上へ＝次・下へ＝前。** 横書きの既定（`'vertical'`）では送らない＝自由スクロールのまま（横書きの上下スワイプには一般に自由スクロールが期待される・本人の判断）。`'all'` で横書きも送る
+- **閾値の出どころは親の定数 1 か所。** 注入スクリプトには文字列連結で埋め込む（`tests/cases/swipe-paging.js` が一致を検査）。高さの 12% かつ 48px 以上、縦が横の 1.5 倍以上。文字選択中・2 本指は除外。判定は `touchend`（volumetap は離す前に 120ms 止まるが、移動量で見るので無関係）
+- **`yomikake.html`: 判定は iframe（`SHARED_TAIL`）、実行は親。** `EPUB_SWIPE` → `runTapAction` → `scrollPage` でタップ・キーと同じ経路（章またぎ・読了バナー・`_pendingScrollAfterRender`）。各モードが `isVertAxis()` を定義し（publisher は `axis() === "h"`）、`swipeOn()` が設定と軸から有効かを決める。動いたタッチでは `click` が出ないので `EPUB_TAP` と二重にならない
+- **⚠ 有効なときは iframe に `html,body{touch-action:pan-x pinch-zoom}` を入れる**（`applySwipeTouchAction()`、`init()` で `applyInit()` の直後＝publisher の軸が分かってから）。入れないと横書き（`'all'`）で「ブラウザのスクロール＋1 ページ送り」が重なる。左右（縦書きの自由スクロール）とピンチは残す
+- **親ページに `html, body { overscroll-behavior-y:none }`（両ファイル・設定に依らない）。** Chrome のタブで開いているとき、上下のドラッグ（volumetap の「戻す」と同じ動き）で**ページごと「引っ張って更新」されうる**状態が以前からあった
+- **FXL**: `yomikake.html` は `attachFxlSwipe`（`#fxl-container` の touch イベント）、iOS は既存の FXL スワイプの `onEnd` に上下判定を足した。ズーム中は `attachFxlPan` の `pointerup` で同じ判定に当たれば `advanceFxlZoomStep` で領域送り（ドラッグ前が `preset` なら `mode` を `preset` に戻してから送る — ドラッグ中に `free` になるので、戻さないと次ページへ飛ぶ）。volumetap と指は見分けられないので、大きな縦のパンは領域送りになる（設定「しない」で従来のパン）。
+- **ナビボタンの上**: `.scroll-btn` / `.chapter-btn` は本文の上に重なり、そこで始まった動きは本文側に届かない（次へボタン「大」は下 42vh を覆い、volumetap の送りが丸ごと吸われた）。`attachNavBtnSwipe` がボタン上の上下スワイプを `scrollPage` に流し、直後の `click` を捨てる。ボタンは `touch-action:none`綴じ方向によらず上へ＝次。**volumetap の割り当ては Chrome 単位なので、FXL が対応しないと漫画だけ読めなくなる**
+- **`yomikake_ios.html`**: transform スクロールで自由スクロールが無く、横書きはもとから上下スワイプで送る（変更なし）。縦書きと publisher の縦書き軸に `swipeV()` を足し、**左右より先に見る**。`'off'` なら従来どおり左右だけ。iOS の FXL は `advanceFxlPage` を直接呼ぶ（既存の流儀）
+- 設定を変えたら `rerenderKeepPos()`（判定と CSS を srcdoc に焼くため）。表示設定リセットの対象（`DISPLAY_DEFAULTS`）。ヘルプは「🗺️ タップ領域のガイド」の節の直後（iOS 版は文面が違う）
+- **実機でしか確かめられないこと**: 実際の指・volumetap での送り、`touch-action` 下での長押し文字選択、FXL で `touchend` が届くこと（`touch-action:manipulation` のまま）。headless のテストは合成 TouchEvent までしか見ていない
 
 ### 読み上げ（TTS・Web Speech API・v2.9.0・両ファイル共通）
 
