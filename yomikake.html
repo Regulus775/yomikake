@@ -11144,9 +11144,16 @@ function closeBook() {
 // 名前は旧「読了バナー」のまま（呼び出し元を触らないため）。中身は本文の上に重なるパネル。
 let _finishedOpen     = false;
 let _finishedOpenedAt = 0;
-let _fpListAuthor     = '';   // 「リストで見る」で絞り込む著者（蔵書に他の本がある最初の著者）
-// 末尾で Space/Enter・タップを連打していた勢いでパネルを閉じない猶予
-const FINISHED_GUARD_MS = 400;
+let _fpListAuthor     = '';   // 「リストで見る」で絞り込む著者（蔵書の冊数がいちばん多い著者）
+// 末尾で Space/Enter・タップを連打していた勢いでパネルを閉じない猶予。
+// タッチ端末は長めにする: スマホのボトムシートはボタンが下端の「次へ」の帯に重なり、
+// どんどんページを送っていると気づかず「読みかけリストへ」を押しうる
+const FINISHED_GUARD_MS       = 400;
+const FINISHED_GUARD_TOUCH_MS = 800;
+function _finishedGuardMs() {
+  try { if (matchMedia('(hover:none) and (pointer:coarse)').matches) return FINISHED_GUARD_TOUCH_MS; } catch (e) {}
+  return FINISHED_GUARD_MS;
+}
 function showFinishedBanner() {
   _bookFinished = true;
   _rdMarkFinishedAt();
@@ -11165,7 +11172,7 @@ function showFinishedBanner() {
   const stay = document.getElementById('finished-stay-btn');
   try { stay.focus({ preventScroll: true }); } catch (e) { stay.focus(); }
 }
-function _finishedTooSoon() { return Date.now() - _finishedOpenedAt < FINISHED_GUARD_MS; }
+function _finishedTooSoon() { return Date.now() - _finishedOpenedAt < _finishedGuardMs(); }
 function _finishedButton(fn) { if (!_finishedTooSoon()) fn(); }
 function _finishedBackdropClick() { if (!_finishedTooSoon()) dismissFinishedBanner(); }
 

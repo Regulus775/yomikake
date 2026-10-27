@@ -121,6 +121,15 @@ openFixture('webnovel.epub')
   T('開いた直後のボタンは効かない', ov().classList.contains('show'));
   _finishedBackdropClick();
   T('開いた直後の背景タップも効かない', ov().classList.contains('show'));
+  // タッチ端末は猶予を長く（ボトムシートのボタンが下端の「次へ」帯に重なる）
+  T('PC の猶予は 400ms', _finishedGuardMs() === FINISHED_GUARD_MS && FINISHED_GUARD_MS === 400);
+  var realMM = window.matchMedia;
+  window.matchMedia = function (q) { return { matches: /pointer:\s*coarse/.test(q) }; };
+  T('タッチ端末の猶予は 800ms', _finishedGuardMs() === 800);
+  _finishedOpenedAt = Date.now() - 600;
+  document.getElementById('finished-list-btn').click();
+  T('タッチ端末では 600ms 後もボタンは効かない', ov().classList.contains('show') && !!state.epub);
+  window.matchMedia = realMM;
   _finishedOpenedAt = 0;
 
   // ── Escape ＝ この本に戻る ──
