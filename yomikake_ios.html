@@ -3495,6 +3495,9 @@ const state = {
   bookContributorsRoled:[], bookDescription:'', bookPubDate:'', bookSeries:'', bookRights:'',  // 書誌v2: 訳者等 / あらすじ / 刊行日 / シリーズ / 権利表示（表示専用。しおりキーには使わない）
   bookSubtitle:'', bookGenre:'', bookGenreRaw:'', bookSerial:'', bookTags:[],
   bookEpisodeCount:0, bookCharCount:0, bookSourceUpdated:'', bookAudience:'',
+  // 読了パネル（design_finished_next.md）: シリーズ名（巻を除く・次の巻の検索用）/
+  // novel_downloader が ePub を作った日時（手元情報の鮮度。nd:* を持つ本だけ）
+  bookSeriesName:'', bookGeneratedAt:'',
   // 書誌v3（配信元メタデータ）: 副題 / 共通ジャンル / ジャンル原文 / 連載状態 / タグ /
   // サイト側の総話数 / 総文字数 / サイト更新日 / 対象年齢。すべて表示専用。
   // このうち bookGenre と bookSerial だけを本棚の絞り込み用に localStorage へ保存する。
@@ -4214,6 +4217,7 @@ async function loadEpub(file) {
     state.bookDescription = descEl ? descEl.textContent.trim() : '';
     state.bookPubDate = _pubDateFromOpf(opfDoc);
     state.bookSeries  = _seriesFromOpf(opfDoc);
+    state.bookSeriesName = _seriesInfoFromOpf(opfDoc).name;
     state.bookRights  = [...opfDoc.querySelectorAll('metadata > *|rights, metadata > rights')]
       .map(el => el.textContent.trim()).filter(Boolean).join('／');
     const srcEl = opfDoc.querySelector('metadata > *|source, metadata > source');
@@ -4234,6 +4238,7 @@ async function loadEpub(file) {
     state.bookEpisodeCount  = _ndMetaInt(opfDoc, 'episodeCount');
     state.bookCharCount     = _ndMetaInt(opfDoc, 'charCount');
     state.bookAudience      = _audienceFromOpf(opfDoc);
+    state.bookGeneratedAt   = _generatedAtFromOpf(opfDoc);
     // dc:subject はジャンル原文＋タグ。原文と一致するものはタグ表示から除く
     state.bookTags = _subjectsFromOpf(opfDoc).filter(v => v !== state.bookGenreRaw);
     buildTtsVoiceSelect();
@@ -10670,6 +10675,7 @@ function closeBook() {
   state.bookSubtitle = ''; state.bookGenre = ''; state.bookGenreRaw = ''; state.bookSerial = '';
   state.bookTags = []; state.bookEpisodeCount = 0; state.bookCharCount = 0;
   state.bookSourceUpdated = ''; state.bookAudience = '';
+  state.bookSeriesName = ''; state.bookGeneratedAt = '';
   state.bookKey = ''; state.publisherAxis = null;
   state.renderMode = 'reflow'; state.fxlPpd = 'ltr';
   state.fxlPairs = null; state.currentPairIdx = 0;
@@ -11333,6 +11339,19 @@ function _audienceFromOpf(opfDoc) {
 function _countEpisodesInSpine() {
   return (state.spine || []).filter(it => /(^|\/)ep\d+\.xhtml$/i.test(it.href || '')).length;
 }
+// 収録話数とサイト側の総話数。partial = ダウンロード時点でサイトに続きがあった
+// （ヘルプの分量行と読了パネルの共通の判定）
+function _volumeInfo() {
+  const eps   = _countEpisodesInSpine();
+  const total = state.bookEpisodeCount;
+  return { eps: eps, total: total, partial: !!(eps && total && total > eps) };
+}
+// 本・カードの著者一覧。creators 配列があればそれ、無ければ creator を丸ごと 1 名。
+// ⚠ 「・」で割らない — 外国人名（ジョン・スミス）が割れる（_rdAuthorRanking と同じ規則）
+function _authorsOf(it) {
+  if (it.creators && it.creators.length) return it.creators;
+  return it.creator ? [it.creator] : [];
+}
 
 // ══════════════════════════════════════════
 //  書誌情報（底本サイト・役割付き著者）
@@ -11440,7 +11459,9 @@ function _pubDateFromOpf(opfDoc) {
   return plain;
 }
 // シリーズ名（＋巻）: EPUB3 標準 belongs-to-collection / jisui2epub の dcndl:seriesTitle
-function _seriesFromOpf(opfDoc) {
+// シリーズ名と巻を分けて返す（無ければ name:''）。表示用の文字列は _seriesFromOpf、
+// 読了パネルの「次の巻を探す」は巻を除いた name を使う
+function _seriesInfoFromOpf(opfDoc) {
   const metas = [...opfDoc.querySelectorAll('metadata meta')];
   const byProp = p => metas.find(m => m.getAttribute('property') === p && !m.getAttribute('refines'));
   let el = byProp('belongs-to-collection'), vol = '';
@@ -11454,10 +11475,21 @@ function _seriesFromOpf(opfDoc) {
     const v = byProp('dcndl:volume');
     vol = v ? v.textContent.trim() : '';
   }
-  if (!el) return '';
-  const name = el.textContent.trim();
-  if (!name) return '';
-  return vol ? name + '（' + vol + '）' : name;
+  const name = el ? el.textContent.trim() : '';
+  return { name: name, vol: name ? vol : '' };
+}
+function _seriesFromOpf(opfDoc) {
+  const s = _seriesInfoFromOpf(opfDoc);
+  if (!s.name) return '';
+  return s.vol ? s.name + '（' + s.vol + '）' : s.name;
+}
+// novel_downloader が ePub を作った日時（dcterms:modified）。手元にある連載情報の鮮度。
+// ⚠ nd:* を1件も持たない本では読まない — 出版社の改訂日であって鮮度の意味を持たない
+function _generatedAtFromOpf(opfDoc) {
+  if (!opfDoc.querySelector('metadata meta[property^="nd:"]')) return '';
+  const el = opfDoc.querySelector('metadata meta[property="dcterms:modified"]');
+  const v = el ? el.textContent.trim() : '';
+  return (v && !isNaN(new Date(v).getTime())) ? v : '';
 }
 // dc:creator / dc:contributor を role・display-seq 付きで解析する。
 // ★ bookKey（しおり）は書名＋全 dc:creator 由来なので、contributor を
@@ -13000,9 +13032,7 @@ function _helpSourceUpdatedHtml() {
 // 数えられない本（他ツール製）は従来どおりチャプター数を出す。
 function _helpVolumeHtml() {
   const parts = [];
-  const eps   = _countEpisodesInSpine();
-  const total = state.bookEpisodeCount;
-  const partial = !!(eps && total && total > eps);   // サイトに続きがある
+  const { eps, total, partial } = _volumeInfo();   // partial: サイトに続きがある
   if (partial)      parts.push(t('help.volumeOf', {n: eps, total: total}));
   else if (eps)     parts.push(t('help.volume', {n: eps}));
   else              parts.push(t('help.chapters', {n: state.spine.length}));
