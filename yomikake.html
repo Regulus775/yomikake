@@ -8955,6 +8955,9 @@ async function loadEpubFromCache(bookKey, opts) {
   // noPicker: 起動時の自動オープンなどユーザージェスチャ無しの呼び出し。
   // ピッカーはジェスチャ外では開けない（例外 or 無視）ので、失敗時は黙って読みかけリストのまま。
   const noPicker = !!(opts && opts.noPicker);
+  // 成否は「新しい本に入れ替わったか」で見る。「本が開いているか」で見ると、読了パネルの
+  // 「次の巻を開く」（前の本を開いたまま呼ぶ）で失敗しても成功扱いになり、ファイル選択へ落ちない
+  const prevEpub = state.epub;
   if (!_idbAvailable || !_cachedKeys.has(bookKey)) { if (!noPicker) openFilePicker(); return; }
   showLoadingPreSelect();
   try {
@@ -8987,7 +8990,7 @@ async function loadEpubFromCache(bookKey, opts) {
     if (!noPicker) showToast(t('toast.cacheLoadFailed'));
     _cachedKeys.delete(bookKey);
     _idbDelete(bookKey).catch(() => {});
-    if (!state.epub && !noPicker) openFilePicker();
+    if (state.epub === prevEpub && !noPicker) openFilePicker();
   }
 }
 
@@ -9082,6 +9085,8 @@ async function openFilePicker(opts) {
       });
       await loadEpub(await handle.getFile(), handle);
     } catch (e) {
+      // startIn のハンドルが古い（ファイルを移動・削除した）と開けないことがある。前回の場所で開き直す
+      if (opts && opts.startIn && e.name !== 'AbortError') return openFilePicker();
       hideLoading();
       if (e.name !== 'AbortError') showToast(t('err.loadFailed', {msg: e.message}));
     }
@@ -9737,9 +9742,11 @@ async function openFilePickerForBook(bookKey) {
   //    代償: ディスク上のファイルが更新されていても自動では拾わない。新しい実体を読むときは
   //      「別の ePub を開く」で選び直す（開き直せばキャッシュも更新される）。
   if (_cachedKeys.has(bookKey)) {
-    // noPicker でピッカーを抑止し、失敗時のフォールバック先は自前で決める
+    // noPicker でピッカーを抑止し、失敗時のフォールバック先は自前で決める。
+    // 成否は「新しい本に入れ替わったか」で見る（読了パネルからは前の本を開いたまま呼ばれる）
+    const prevEpub = state.epub;
     await loadEpubFromCache(bookKey, { noPicker: true });
-    if (state.epub) return;
+    if (state.epub && state.epub !== prevEpub) return;
     // キャッシュが壊れていた（loadEpubFromCache が _cachedKeys から除去済み）→ 下へ落ちる
   }
   // 2) File System Access ハンドル（キャッシュが無い／読めなかったときだけ）。
@@ -11285,7 +11292,10 @@ function _finishedWorkHtml() {
 function _seriesOf(title, colName, colVol) {
   if (colName) {
     const v = parseInt(String(colVol || '').normalize('NFKC'), 10);
-    return { name: colName, vol: v > 0 ? v : 0 };
+    if (v > 0) return { name: colName, vol: v };
+    // group-position が無い・数字でないときは書名の巻数を借りる（名前は collection のまま）
+    const ft = _seriesOf(title);
+    return { name: colName, vol: ft ? ft.vol : 0, ...(ft && ft.ud ? { ud: true } : {}) };
   }
   const s = String(title || '').normalize('NFKC').trim();
   const KANJI_VOL = { '上': 1, '中': 2, '下': 3 };
@@ -11293,8 +11303,10 @@ function _seriesOf(title, colName, colVol) {
     /^(.*?)[\s_]*\((\d{1,3})\)$/,             // 綿の国星(1)・そんな奴ァいねえ!! (1)
     /^(.*?)[\s_]*第(\d{1,3})[巻集部]$/,         // 三重のあまいもん第2集
     /^(.*?)[\s_]*vol\.?\s*(\d{1,3})$/i,
-    /^(.*\D)(\d{1,3})$/,                         // RAIL_WARS!2・ふたつのスピカ 8（直前が数字なら不可＝日付を巻数にしない）
-    /^(.*?)[\s_]*([上中下])巻?$/,                // 風の万里黎明の空上
+    /^(.*[^\d.])(\d{1,3})$/,                     // RAIL_WARS!2・ふたつのスピカ 8（直前が数字・小数点なら不可＝日付や 2.5 を巻数にしない）
+    /^(.*?)[\s_]+([上中下])巻?$/,               // 区切りあり: 「○○ 上」
+    /^(.*?)([上中下])巻$/,                       // 「○○上巻」
+    /^(.*[^\u3041-\u309F\s_])([上中下])$/,     // 区切りなし: 風の万里黎明の空上。直前がひらがななら不可（坂の上・空の下）
   ];
   for (const re of pats) {
     const m = s.match(re);
@@ -11312,16 +11324,19 @@ function _seriesKey(name) { return _rlNorm(name).replace(/[\s_・\-!?！？]/g, 
 let _fpSeries  = null;  // 読了パネルのシリーズ {name, vol}
 let _fpStartIn = null;  // 「次の巻を選ぶ」で開くフォルダ＝今の本の FSA ハンドル（パネルを開いたときに先読み）
 // 蔵書（しおり）の中から次の巻を探す。著者が両方に分かっているときは 1 人でも重なること
-function _fpNextInLibrary(sr, authors) {
+function _fpNextInLibrary(sr, authors, items) {
   if (!sr || !sr.vol) return null;
-  const key = _seriesKey(sr.name);
+  // 候補の巻は書名から割り出すので、今の本のシリーズ名が collection 由来なら書名由来の名前とも照合する
+  const keys = [_seriesKey(sr.name)];
+  const ft = _seriesOf(state.bookTitle);
+  if (ft) keys.push(_seriesKey(ft.name));
   const an = authors.map(_rlNorm);
   // 番号の巻は N+1 ちょうど（飛ばさない）。上中下は「上の次」が中か下かを本が決めるので、後ろの巻で最も近いもの
   let best = null, bestVol = Infinity;
-  for (const it of _rlCollect()) {
+  for (const it of (items || _rlCollect())) {
     if (it.key === state.bookKey) continue;
     const s2 = _seriesOf(it.title);
-    if (!s2 || _seriesKey(s2.name) !== key || !!s2.ud !== !!sr.ud) continue;
+    if (!s2 || !keys.includes(_seriesKey(s2.name)) || !!s2.ud !== !!sr.ud) continue;
     if (sr.ud ? !(s2.vol > sr.vol) : s2.vol !== sr.vol + 1) continue;
     const ca = _authorsOf(it);
     if (an.length && ca.length && !ca.some(a => an.includes(_rlNorm(a)))) continue;
@@ -11330,11 +11345,11 @@ function _fpNextInLibrary(sr, authors) {
   return best;
 }
 // 「次の巻」節: シリーズ名と巻数が分かる本だけ（design_series_next.md §2-2）
-function _finishedSeriesHtml(authors) {
+function _finishedSeriesHtml(authors, items) {
   const sr = _fpSeries = _seriesOf(state.bookTitle, state.bookSeriesName, state.bookSeriesVol);
   if (!sr) return '';
   const label = sr.vol ? sr.name + '（' + sr.vol + '）' : sr.name;
-  const next = _fpNextInLibrary(sr, authors);
+  const next = _fpNextInLibrary(sr, authors, items);
   const out = ['<p>' + esc(t('help.series', {name: label})) + '</p>'];
   const links = [];
   // 手元にキャッシュがあればそのまま開く。無ければ書名を添えてファイル選択へ
@@ -11350,7 +11365,7 @@ function _finishedSeriesHtml(authors) {
        + '<p class="fp-note">' + esc(t('finished.pickNextNote', {name: sr.name})) + '</p></div>';
 }
 // 蔵書にある次の巻を開く（キャッシュから。読めなければ従来どおりハンドル → ファイル選択）
-function finishedOpenNext(key) { if (key) openFilePickerForBook(key); }
+function finishedOpenNext(key) { return key ? openFilePickerForBook(key) : undefined; }
 // 次の巻を選ぶ: シリーズ名をクリップボードへ（必ずファイル選択より先 — Android は閉じた後だと
 // "Document is not focused" で失敗する）→ 今の本と同じフォルダからファイル選択（実測は §1-3）
 function finishedPickNext() {
@@ -11363,12 +11378,12 @@ function finishedPickNext() {
   openFilePicker(_fpStartIn ? { startIn: _fpStartIn } : undefined);
 }
 // 「この著者の本」節: 蔵書の同じ著者（この本以外）と Web 検索
-function _finishedAuthorHtml(authors) {
+function _finishedAuthorHtml(authors, items) {
   _fpListAuthor = '';
   if (!authors.length) return '';
   // 冊数は「リストで見る」で絞る著者のもの（共著なら蔵書の多い著者）で、この本も含める
   // ＝押した先の著者バーの冊数と一致する。この本しか無ければ節ごと冊数を出さない
-  const items = _rlCollect();
+  items = items || _rlCollect();
   let count = 0;
   for (const name of authors) {
     const k = _rlNorm(name);
@@ -11386,6 +11401,7 @@ function _finishedRender() {
   const body = document.getElementById('finished-body');
   if (!body) return;
   const authors = _authorsOf({creators: state.bookCreators, creator: state.bookCreator});
+  const items = _rlCollect();   // 「次の巻」と「この著者の本」で共用（しおりの全件走査を 1 回に）
   const cover = state.bookCoverDataUri
     ? '<img class="fp-cover" src="' + esc(state.bookCoverDataUri) + '" alt="">' : '';
   const names = authors.length
@@ -11395,8 +11411,8 @@ function _finishedRender() {
       '<h3 id="finished-title" class="fp-head">' + esc(t('finished.msg')) + '</h3>'
     + '<div class="fp-book">' + cover + '<div style="min-width:0;"><div class="fp-title">' + esc(state.bookTitle) + '</div>' + names + '</div></div>'
     + _finishedWorkHtml()
-    + _finishedSeriesHtml(authors)
-    + _finishedAuthorHtml(authors);
+    + _finishedSeriesHtml(authors, items)
+    + _finishedAuthorHtml(authors, items);
 }
 // 底本 URL をクリップボードへ（novel_downloader に貼れば続きを取得できる）。
 // clipboard が無い・拒否されたら、選択済みの入力欄を出して手でコピーしてもらう

@@ -30,9 +30,15 @@ function S(title) { var r = _seriesOf(title); return r ? r.name + '|' + r.vol + 
   ['Pythonチュートリアル 第3版', 'null'],
   ['ふたりの距離の概算', 'null'],
   ['上', 'null'],
+  ['坂の上', 'null'],                         // 直前がひらがなの上中下は普通の語
+  ['東京の空の下', 'null'],
+  ['風の海迷宮の岸 下', '風の海迷宮の岸|3|ud'],
+  ['風の海迷宮の岸上巻', '風の海迷宮の岸|1|ud'],
+  ['入門書 2.5', 'null'],                     // 小数は巻数にしない
 ].forEach(function (c) { T('_seriesOf: ' + c[0], S(c[0]) === c[1], S(c[0])); });
 T('_seriesOf: belongs-to-collection が最優先', JSON.stringify(_seriesOf('なんでも 9', '本当のシリーズ', '２')) === '{"name":"本当のシリーズ","vol":2}');
 T('_seriesOf: collection で巻数なし → vol 0', _seriesOf('x', '本当のシリーズ', '').vol === 0);
+T('_seriesOf: collection に巻数が無ければ書名の巻数を借りる', JSON.stringify(_seriesOf('薬屋 2', '薬屋のひとりごと', '')) === '{"name":"薬屋のひとりごと","vol":2}');
 T('_seriesKey: 全角半角・記号の差を吸収', _seriesKey('RAIL_WARS!') === _seriesKey('ＲＡＩＬ＿ＷＡＲＳ！'.normalize('NFKC')) && _seriesKey('RAIL WARS') === _seriesKey('RAIL_WARS!'));
 
 // ══ dcndl:seriesTitle（叢書名）は次の巻に使わない ══
@@ -95,6 +101,33 @@ T('belongs-to-collection は src=collection', _seriesInfoFromOpf(opf2).src === '
   if (origClipDesc) Object.defineProperty(Navigator.prototype, 'clipboard', origClipDesc);
   hideLoading();
   dismissFinishedBanner();
+
+  // ══ 「次の巻を開く」でキャッシュが読めなければファイル選択へ落ちる（本を開いたまま呼ぶ経路）══
+  var picks = 0, origIdbGet = _idbGet, origSOFP2 = window.showOpenFilePicker, inp2 = document.getElementById('file-input'), origClick2 = inp2.click;
+  var isMain = typeof _handleKeys !== 'undefined';
+  if (isMain) window.showOpenFilePicker = function () { picks++; return Promise.reject(new DOMException('x', 'AbortError')); };
+  else inp2.click = function () { picks++; };
+  _idbGet = function () { return Promise.reject(new Error('dead blob')); };
+  _cachedKeys.add('epub_pos_テストシリーズ 3__ウェブ作者');
+  var bookBefore = state.epub;
+  await finishedOpenNext('epub_pos_テストシリーズ 3__ウェブ作者');
+  await wait(100);
+  T('キャッシュが読めなければファイル選択を開く', picks === 1, picks);
+  T('前の本は開いたまま', state.epub === bookBefore);
+  _idbGet = origIdbGet;
+  if (isMain) window.showOpenFilePicker = origSOFP2; else inp2.click = origClick2;
+  _cachedKeys.delete('epub_pos_テストシリーズ 3__ウェブ作者');
+  hideLoading();
+  if (isMain) {
+    // startIn のハンドルが古くて開けなければ、前回の場所で開き直す
+    var tries = [];
+    window.showOpenFilePicker = function (o) { tries.push(o && o.startIn ? 's' : 'n'); return tries.length === 1 ? Promise.reject(new DOMException('gone', 'NotFoundError')) : Promise.reject(new DOMException('x', 'AbortError')); };
+    await openFilePicker({ startIn: { kind: 'file' } });
+    await wait(50);
+    T('startIn が駄目なら指定なしで開き直す', tries.join('') === 'sn', tries.join(''));
+    window.showOpenFilePicker = origSOFP2;
+    hideLoading();
+  }
 
   // ══ 上・下の 2 巻本: 上の次は下 ══
   state.bookTitle = '風の海迷宮の岸上'; state.bookSeriesName = ''; state.bookSeriesVol = '';
