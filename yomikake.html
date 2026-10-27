@@ -9175,7 +9175,6 @@ function _rlFilterSort(items) {
       const hit = _authorsOf(it).find(a => _rlNorm(a) === qn);
       if (hit) { author = { name: hit }; break; }
     }
-    if (author) author.count = items.filter(it => _authorsOf(it).some(a => _rlNorm(a) === qn)).length;
   }
   // 例外: このセッションで読み終えた本は残す（design_finished_next.md §4）
   let arr = (_rlPrefs.showFinished || author) ? items
@@ -9188,8 +9187,13 @@ function _rlFilterSort(items) {
   // ジャンル絞り込み。'' = すべて / '_none' = 未分類（まだ開いていない本を含む）
   if (_rlPrefs.genre === '_none')      arr = arr.filter(it => !it.genre);
   else if (_rlPrefs.genre)             arr = arr.filter(it => it.genre === _rlPrefs.genre);
+  // 著者モードは著者名の完全一致で絞る（部分一致だと書名にその名を含む他人の本まで出る）。
+  // 冊数はチップの絞り込みの後で数える＝バーの冊数と並んでいるカードが一致する
   const terms = _rlNorm(_rlQuery).split(/[\s　]+/).filter(Boolean);
-  if (terms.length)
+  if (author) {
+    arr = arr.filter(it => _authorsOf(it).some(a => _rlNorm(a) === qn));
+    author.count = arr.length;
+  } else if (terms.length)
     arr = arr.filter(it => {
       const hay = _rlNorm(it.title + ' ' + it.creator + ' ' + genreLabel(it.genre));
       return terms.every(tm => hay.includes(tm));
@@ -11202,7 +11206,10 @@ function _finishedWorkHtml() {
   const v = _volumeInfo();
   if (v.partial) lines.push('<p>' + esc(t('finished.siteHasMore', {total: v.total, n: v.eps})) + '</p>');
   if (state.bookGeneratedAt) {
-    const days = Math.max(0, Math.floor((Date.now() - new Date(state.bookGeneratedAt).getTime()) / 86400000));
+    // 暦日の差（経過時間で割ると、昨夜 23 時の日付の横に「今日」と出る）
+    const g = new Date(state.bookGeneratedAt), now = new Date();
+    const days = Math.max(0, Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate())
+                - new Date(g.getFullYear(), g.getMonth(), g.getDate())) / 86400000));
     const date = _fpLocalDate(state.bookGeneratedAt);
     const msg  = days === 0 ? t('finished.asOfToday', {date}) : t('finished.asOf', {date, days});
     lines.push('<p class="fp-stale' + (days >= 30 ? ' fp-old' : '') + '">' + esc(msg) + '</p>');
@@ -11218,7 +11225,7 @@ function _finishedWorkHtml() {
 function _finishedSeriesHtml() {
   const name = state.bookSeriesName;
   if (!name) return '';
-  const author = (state.bookCreators && state.bookCreators[0]) || state.bookCreator || '';
+  const author = _authorsOf({creators: state.bookCreators, creator: state.bookCreator})[0] || '';
   const kw = (name + ' ' + author).trim();
   return '<div class="fp-sec"><h4>' + esc(t('finished.secNext')) + '</h4>'
        + '<p>' + esc(t('help.series', {name: state.bookSeries || name})) + '</p>'
@@ -11230,13 +11237,14 @@ function _finishedSeriesHtml() {
 function _finishedAuthorHtml(authors) {
   _fpListAuthor = '';
   if (!authors.length) return '';
-  const items = _rlCollect().filter(it => it.key !== state.bookKey);
+  // 冊数は「リストで見る」で絞る著者のもの（共著なら蔵書の多い著者）で、この本も含める
+  // ＝押した先の著者バーの冊数と一致する。この本しか無ければ節ごと冊数を出さない
+  const items = _rlCollect();
   let count = 0;
   for (const name of authors) {
     const k = _rlNorm(name);
-    const n = items.filter(it => _authorsOf(it).some(a => _rlNorm(a) === k)).length;
-    if (n && !_fpListAuthor) _fpListAuthor = name;
-    count = Math.max(count, n);
+    const mine = items.filter(it => _authorsOf(it).some(a => _rlNorm(a) === k));
+    if (mine.some(it => it.key !== state.bookKey) && mine.length > count) { count = mine.length; _fpListAuthor = name; }
   }
   const out = [];
   if (count) out.push('<p>' + esc(t('finished.ownedByAuthor', {n: count}))

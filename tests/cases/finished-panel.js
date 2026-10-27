@@ -83,7 +83,16 @@ openFixture('webnovel.epub')
   T('URL コピーのボタン', !!document.querySelector('#finished-body [onclick="finishedCopyUrl()"]'));
   T('次の巻（シリーズ名＋著者で NDL）', [].some.call(document.querySelectorAll('#finished-body a'),
     function (a) { return a.href.indexOf('ndlsearch.ndl.go.jp') >= 0 && decodeURIComponent(a.href).indexOf('テストシリーズ ウェブ作者') >= 0; }));
-  T('蔵書の同じ著者は 1 冊（この本と他人の本は数えない）', txt.indexOf('蔵書に 1 冊') >= 0, txt);
+  T('蔵書の同じ著者は 2 冊（この本を含む・他人の本は数えない）', txt.indexOf('蔵書に 2 冊') >= 0, txt);
+  // 暦日で数える: 昨夜 23:30 は経過時間が 1 日未満でも「1 日前」（「今日」ではない）
+  var savedGen = state.bookGeneratedAt, mid = new Date(); mid.setHours(0, 0, 0, 0);
+  state.bookGeneratedAt = new Date(mid.getTime() - 30 * 60000).toISOString();
+  _finishedRender();
+  T('鮮度は暦日の差（昨夜は 1 日前）', bodyText().indexOf('（1 日前）') >= 0, bodyText());
+  state.bookGeneratedAt = new Date(mid.getTime() + 60000).toISOString();
+  _finishedRender();
+  T('今日の 0:01 は「今日」', bodyText().indexOf('（今日）') >= 0);
+  state.bookGeneratedAt = savedGen; _finishedRender();
   T('著者の Web 検索', [].some.call(document.querySelectorAll('#finished-body a'),
     function (a) { return a.href.indexOf('google.com/search') >= 0; }));
   T('読了は記録済み（パネルが出た時点）', !!JSON.parse(localStorage.getItem(state.bookKey)).finishedAt);
@@ -205,6 +214,7 @@ openFixture('webnovel.epub')
   put('epub_pos_読了B__甲山',     { spineIdx: 4, ratio: 1.0, creator: '甲山', finishedAt: '2026-01-02T00:00:00Z' });
   put('epub_pos_共著C__甲山・乙川', { spineIdx: 0, ratio: 0.1, creator: '甲山・乙川', creators: ['甲山', '乙川'] });
   put('epub_pos_外国D__ジョン・スミス', { spineIdx: 0, ratio: 0.1, creator: 'ジョン・スミス' });
+  put('epub_pos_甲山の思い出__べつの人', { spineIdx: 4, ratio: 1.0, creator: 'べつの人', finishedAt: '2026-01-02T00:00:00Z' });
   _rlQuery = ''; _rlPrefs.showFinished = false; _rlPrefs.view = 'list';
   document.getElementById('rl-search').value = '';
   buildReadingList();
@@ -221,6 +231,8 @@ openFixture('webnovel.epub')
   T('著者モードでは読了も出る', keys.indexOf('epub_pos_読了B__甲山') >= 0, keys.join(','));
   T('共著も出る', keys.indexOf('epub_pos_共著C__甲山・乙川') >= 0);
   T('他の著者は出ない', keys.indexOf('epub_pos_外国D__ジョン・スミス') < 0);
+  T('書名に著者名を含む他人の読了本は出ない', keys.indexOf('epub_pos_甲山の思い出__べつの人') < 0, keys.join(','));
+  T('著者バーの冊数＝並んでいるカード', r.author && r.author.count === r.shown.length, r.author && r.author.count);
   var bar = document.getElementById('rl-author-bar');
   T('著者バーが出る', bar.classList.contains('show'));
   T('著者バーに冊数', bar.textContent.indexOf('甲山') >= 0 && bar.textContent.indexOf('3') >= 0, bar.textContent);
