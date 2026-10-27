@@ -37,17 +37,31 @@ T('パネルは最初は閉じている', !ov().classList.contains('show'));
   setLang(lg);
   ['finished.dismiss', 'finished.secWork', 'finished.checkOnSite', 'finished.copyUrl',
    'finished.secNext', 'finished.findNext', 'finished.secAuthor', 'finished.showInList',
-   'finished.searchWeb', 'toast.urlCopied', 'toast.urlCopyManual'].forEach(function (k) {
+   'finished.searchWeb', 'help.authorPage', 'toast.urlCopied', 'toast.urlCopyManual'].forEach(function (k) {
     T('i18n ' + k + ' (' + lg + ')', t(k) !== k);
   });
   T('i18n finished.siteHasMore の {total}{n} (' + lg + ')',
     t('finished.siteHasMore', { total: 'X', n: 'Y' }).indexOf('X') >= 0 &&
     t('finished.siteHasMore', { total: 'X', n: 'Y' }).indexOf('Y') >= 0);
+  T('i18n finished.authorPage の {site} (' + lg + ')', t('finished.authorPage', { site: 'S' }).indexOf('S') >= 0);
   T('i18n finished.asOf の {date}{days} (' + lg + ')',
     t('finished.asOf', { date: 'D', days: 'N' }).indexOf('D') >= 0 &&
     t('finished.asOf', { date: 'D', days: 'N' }).indexOf('N') >= 0);
 });
 setLang('ja');
+// ── 作者ページの URL（nd:authorUrl・novel_downloader の design_author_url.md §4）──
+T('_safeHttpUrl: https は通す', _safeHttpUrl('https://kakuyomu.jp/users/x') === 'https://kakuyomu.jp/users/x');
+T('_safeHttpUrl: http も通す', _safeHttpUrl('http://example.com/u/1') === 'http://example.com/u/1');
+T('_safeHttpUrl: javascript: は落とす', _safeHttpUrl('javascript:alert(1)') === '');
+T('_safeHttpUrl: 大文字・空白混じりの javascript: も落とす', _safeHttpUrl('  JavaScript:alert(1)') === '');
+T('_safeHttpUrl: data: は落とす', _safeHttpUrl('data:text/html,x') === '');
+T('_safeHttpUrl: 相対 URL は落とす', _safeHttpUrl('/users/x') === '');
+T('_safeHttpUrl: 空', _safeHttpUrl('') === '' && _safeHttpUrl(null) === '');
+(function () {
+  var d = new DOMParser().parseFromString('<package xmlns="http://www.idpf.org/2007/opf"><metadata>'
+    + '<meta property="nd:authorUrl">javascript:alert(1)</meta></metadata></package>', 'application/xml');
+  T('javascript: を入れた OPF からは作者ページを読まない', _safeHttpUrl(_ndMeta(d, 'authorUrl')) === '');
+})();
 T('「閉じない」ではなく「この本に戻る」', t('finished.dismiss') === 'この本に戻る');
 
 // 同じ著者の別の本（蔵書にある）と、無関係な本
@@ -95,6 +109,51 @@ openFixture('webnovel.epub')
   state.bookGeneratedAt = savedGen; _finishedRender();
   T('著者の Web 検索', [].some.call(document.querySelectorAll('#finished-body a'),
     function (a) { return a.href.indexOf('google.com/search') >= 0; }));
+  // ── 作者ページ ──
+  T('nd:authorUrl を読む', state.bookAuthorUrl === 'https://kakuyomu.jp/users/web_author', state.bookAuthorUrl);
+  var authorLinks = function () {
+    var sec = [].filter.call(document.querySelectorAll('#finished-body .fp-sec'),
+      function (s) { return s.textContent.indexOf('この著者の本') >= 0; })[0];
+    return sec ? [].slice.call(sec.querySelectorAll('a.fp-btn')) : [];
+  };
+  var al = authorLinks();
+  T('作者ページのリンクが出る（サイト名つき）', al[0] && al[0].href === 'https://kakuyomu.jp/users/web_author'
+    && al[0].textContent.indexOf('作者ページ（カクヨム）') >= 0, al[0] && al[0].textContent);
+  T('作者ページは Web 検索より先・検索も残る', al.length === 2 && al[1].href.indexOf('google.com/search') >= 0);
+  T('作者ページは別タブ・noopener', al[0] && al[0].target === '_blank' && /noopener/.test(al[0].rel));
+  // 共著でも作者ページは出る（Web 検索は著者行の 🔍 で代用）
+  var savedCr = state.bookCreators;
+  state.bookCreators = ['ウェブ作者', '共著者'];
+  _finishedRender();
+  al = authorLinks();
+  T('共著: 作者ページだけ出る', al.length === 1 && al[0].href === 'https://kakuyomu.jp/users/web_author',
+    al.map(function (a) { return a.href; }).join(','));
+  state.bookCreators = savedCr;
+  // サイト名が分からなければ括弧ごと省く
+  var savedSite = state.bookSourceSite;
+  state.bookSourceSite = '';
+  _finishedRender();
+  al = authorLinks();
+  T('サイト名なし: 括弧を出さない', al[0] && al[0].textContent.indexOf('作者ページ ↗') >= 0
+    && al[0].textContent.indexOf('（') < 0, al[0] && al[0].textContent);
+  state.bookSourceSite = savedSite;
+  _finishedRender();
+  // ヘルプの書誌ブロック: 底本リンクの行に並べる
+  var hp = document.createElement('div');
+  hp.innerHTML = _helpSourceHtml();
+  var ha = hp.querySelectorAll('a');
+  T('ヘルプ: 底本と作者ページが同じ行', hp.querySelectorAll('p').length === 1 && ha.length === 2
+    && ha[0].href.indexOf('kakuyomu.jp/works/') >= 0 && ha[1].href === 'https://kakuyomu.jp/users/web_author',
+    hp.innerHTML);
+  T('ヘルプ: 作者ページの文言・別タブ', ha[1] && ha[1].textContent.indexOf('作者ページ') >= 0
+    && ha[1].target === '_blank' && /noopener/.test(ha[1].rel));
+  // 底本の無い本でも作者ページは単独で出す
+  var savedSrc = state.bookSourceUrl, savedIsbn = state.bookSourceIsbn;
+  state.bookSourceUrl = ''; state.bookSourceIsbn = '';
+  hp.innerHTML = _helpSourceHtml();
+  T('ヘルプ: 底本なしでも作者ページは出る', hp.querySelectorAll('a').length === 1
+    && hp.querySelector('a').href === 'https://kakuyomu.jp/users/web_author');
+  state.bookSourceUrl = savedSrc; state.bookSourceIsbn = savedIsbn;
   T('読了は記録済み（パネルが出た時点）', !!JSON.parse(localStorage.getItem(state.bookKey)).finishedAt);
   T('このセッションの読了に入る', _rlJustFinished.has(state.bookKey));
 
@@ -204,11 +263,14 @@ openFixture('webnovel.epub')
 .then(function () {
   // ── 底本も nd:* も無い本 ──
   T('nd:* の無い本は鮮度を読まない', state.bookGeneratedAt === '');
+  T('nd:authorUrl の無い本は作者ページなし', state.bookAuthorUrl === '');
   finishBook();
   T('「この作品」節は出ない', bodyText().indexOf('この作品') < 0);
   T('「次の巻」節は出ない', bodyText().indexOf('次の巻') < 0);
   T('著者の節は出る（Web 検索）', bodyText().indexOf('この著者の本') >= 0);
   T('蔵書が無ければ冊数は出さない', bodyText().indexOf('蔵書に') < 0);
+  T('作者ページのリンクは出ない', bodyText().indexOf('作者ページ') < 0
+    && _helpSourceHtml().indexOf('作者ページ') < 0);
   // 本を切り替えたら（renderPage を通る）パネルは閉じる
   renderPage(0, 'start');
   T('章を移るとパネルは閉じる', !ov().classList.contains('show'));

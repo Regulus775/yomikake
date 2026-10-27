@@ -224,6 +224,7 @@ def build_webnovel(path):
             '<meta property="nd:serialStatus">連載中</meta>'
             '<meta property="nd:episodeCount">5</meta>'
             '<meta property="nd:updated">2026-01-10</meta>'
+            '<meta property="nd:authorUrl">https://kakuyomu.jp/users/web_author</meta>'
             '<meta property="belongs-to-collection" id="col">テストシリーズ</meta>'
             '<meta refines="#col" property="group-position">2</meta>')
     z.writestr('OEBPS/content.opf', opf('テスト用ウェブ小説', 'ウェブ作者', items, refs, meta))
