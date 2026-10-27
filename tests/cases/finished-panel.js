@@ -195,6 +195,53 @@ openFixture('webnovel.epub')
   renderPage(0, 'start');
   T('章を移るとパネルは閉じる', !ov().classList.contains('show'));
   closeBook();
+
+  // ══ C. カードの著者名から絞り込む ══
+  localStorage.clear();
+  _rlJustFinished.clear();
+  function put(k, o) { localStorage.setItem(k, JSON.stringify(Object.assign(
+    { spineCount: 5, lastOpenedAt: '2026-01-01T00:00:00Z' }, o))); }
+  put('epub_pos_読みかけA__甲山', { spineIdx: 1, ratio: 0.2, creator: '甲山' });
+  put('epub_pos_読了B__甲山',     { spineIdx: 4, ratio: 1.0, creator: '甲山', finishedAt: '2026-01-02T00:00:00Z' });
+  put('epub_pos_共著C__甲山・乙川', { spineIdx: 0, ratio: 0.1, creator: '甲山・乙川', creators: ['甲山', '乙川'] });
+  put('epub_pos_外国D__ジョン・スミス', { spineIdx: 0, ratio: 0.1, creator: 'ジョン・スミス' });
+  _rlQuery = ''; _rlPrefs.showFinished = false; _rlPrefs.view = 'list';
+  document.getElementById('rl-search').value = '';
+  buildReadingList();
+  var spans = document.querySelectorAll('#reading-list-items .rl-author');
+  var names = [].map.call(spans, function (e) { return e.dataset.author; });
+  T('カードの著者名は押せる', names.indexOf('甲山') >= 0 && names.indexOf('乙川') >= 0, names.join(','));
+  T('外国人名は割らない', names.indexOf('ジョン・スミス') >= 0 && names.indexOf('スミス') < 0);
+  T('著者バーは普段は出ない', !document.getElementById('rl-author-bar').classList.contains('show'));
+  var kou = [].filter.call(spans, function (e) { return e.dataset.author === '甲山'; })[0];
+  kou.click();
+  var r = _rlFilterSort(_rlCollect());
+  var keys = r.shown.map(function (it) { return it.key; });
+  T('著者で絞り込む', document.getElementById('rl-search').value === '甲山');
+  T('著者モードでは読了も出る', keys.indexOf('epub_pos_読了B__甲山') >= 0, keys.join(','));
+  T('共著も出る', keys.indexOf('epub_pos_共著C__甲山・乙川') >= 0);
+  T('他の著者は出ない', keys.indexOf('epub_pos_外国D__ジョン・スミス') < 0);
+  var bar = document.getElementById('rl-author-bar');
+  T('著者バーが出る', bar.classList.contains('show'));
+  T('著者バーに冊数', bar.textContent.indexOf('甲山') >= 0 && bar.textContent.indexOf('3') >= 0, bar.textContent);
+  T('著者バーの Web 検索', bar.querySelector('.rl-ab-web').href.indexOf('google.com/search') >= 0);
+  T('カードのクリックはカードを開かない（stopPropagation）', !state.epub);
+  // 部分一致の普通の検索では著者モードにならない（読了は隠れたまま）
+  setRlAuthor('甲');
+  T('部分一致では著者バーは出ない', !bar.classList.contains('show'));
+  T('部分一致では読了は隠れたまま',
+    _rlFilterSort(_rlCollect()).shown.map(function (it) { return it.key; }).indexOf('epub_pos_読了B__甲山') < 0);
+  setRlAuthor('ジョン・スミス');
+  T('外国人名で完全一致', bar.classList.contains('show'));
+  bar.querySelector('.rl-ab-clear').click();
+  T('✕ で検索語だけ消える', document.getElementById('rl-search').value === '' && !bar.classList.contains('show'));
+  _editMode = true; buildReadingList();
+  document.querySelector('#reading-list-items .rl-author').click();
+  T('編集モードでは絞り込まない', document.getElementById('rl-search').value === '');
+  _editMode = false; buildReadingList();
+  setLang('en'); setRlAuthor('甲山');
+  T('著者バーの英語', bar.textContent.indexOf('Author:') >= 0, bar.textContent);
+  setLang('ja'); setRlAuthor('');
   localStorage.clear();
 })
 .catch(function (e) { T('読了パネル E2E 例外', false, e && (e.stack || e.message)); });

@@ -293,6 +293,18 @@
   .rl-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:7px; }
   .rl-title { font-size:14px; font-weight:600; line-height:1.5; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
   .rl-creator { font-size:12px; opacity:.65; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  /* 著者名から同じ著者の本へ絞り込む。<span> にしているのは省略記号（…）を効かせるため
+     （button は原子的なインラインなので途中で切れるだけになる） */
+  .rl-author { cursor:pointer; }
+  .rl-author:hover { color:var(--accent); text-decoration:underline; }
+  .edit-mode .rl-author { cursor:inherit; pointer-events:none; }
+  /* 著者バー: 検索語が著者名と一致しているときだけ出る */
+  #rl-author-bar { display:none; align-items:center; gap:10px; flex-wrap:wrap; font-size:13px; padding:6px 10px; margin:-6px 0 12px; border:1px solid var(--ui-border); border-left:3px solid var(--accent); border-radius:8px; }
+  #rl-author-bar.show { display:flex; }
+  #rl-author-bar .rl-ab-label { font-weight:600; flex:1; min-width:0; overflow-wrap:anywhere; }
+  #rl-author-bar .rl-ab-web { color:var(--accent); text-decoration:none; font-weight:600; white-space:nowrap; }
+  #rl-author-bar .rl-ab-clear { background:transparent; border:none; color:inherit; opacity:.6; cursor:pointer; font-size:14px; padding:2px 6px; }
+  #rl-author-bar .rl-ab-clear:hover { opacity:1; }
   .rl-progress-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
   .rl-bar { flex:1; min-width:60px; height:6px; background:var(--ui-border); border-radius:3px; overflow:hidden; }
   .rl-fill { height:100%; background:var(--accent); border-radius:3px; transition:width .3s; }
@@ -1443,6 +1455,11 @@
             </div>
           </div>
         </div>
+        <div id="rl-author-bar">
+          <span class="rl-ab-label"></span>
+          <a class="rl-ab-web" target="_blank" rel="noopener"></a>
+          <button class="rl-ab-clear" onclick="setRlAuthor('')" data-i18n-title="readingList.clearFilter">✕</button>
+        </div>
         <div id="reading-list-items"></div>
         <div id="reading-list-footer">
           <button id="welcome-rd-btn" onclick="openReadingData()" data-i18n="readingData.title">📊 読書データ</button>
@@ -2062,6 +2079,8 @@ const I18N = {
     'readingList.countFiltered':'{total}冊中 {n}冊',
     'readingList.noMatch':      '該当する本がありません',
     'readingList.clearFilter':  '絞り込みを解除',
+    'readingList.authorBar':    '著者: {name}（{n} 冊）',
+    'readingList.authorFilter': 'この著者の本で絞り込む',
     'readingList.viewList':     'リスト表示',
     'readingList.viewGrid':     'グリッド表示',
     'readingList.purgeTitle':   '読書記録の完全削除',
@@ -2543,6 +2562,8 @@ const I18N = {
     'readingList.countFiltered':'{n} of {total}',
     'readingList.noMatch':      'No matching books',
     'readingList.clearFilter':  'Clear filters',
+    'readingList.authorBar':    'Author: {name} ({n})',
+    'readingList.authorFilter': 'Show books by this author',
     'readingList.viewList':     'List view',
     'readingList.viewGrid':     'Grid view',
     'readingList.purgeTitle':   'Permanently delete record',
@@ -3024,6 +3045,8 @@ const I18N = {
     'readingList.countFiltered':'{total}本中{n}本',
     'readingList.noMatch':      '沒有符合的書',
     'readingList.clearFilter':  '清除篩選',
+    'readingList.authorBar':    '作者：{name}（{n} 本）',
+    'readingList.authorFilter': '篩選此作者的書',
     'readingList.viewList':     '清單檢視',
     'readingList.viewGrid':     '網格檢視',
     'readingList.purgeTitle':   '完全刪除閱讀記錄',
@@ -3505,6 +3528,8 @@ const I18N = {
     'readingList.countFiltered':'{total}本中{n}本',
     'readingList.noMatch':      '没有符合的书',
     'readingList.clearFilter':  '清除筛选',
+    'readingList.authorBar':    '作者：{name}（{n} 本）',
+    'readingList.authorFilter': '筛选此作者的书',
     'readingList.viewList':     '列表视图',
     'readingList.viewGrid':     '网格视图',
     'readingList.purgeTitle':   '完全删除阅读记录',
@@ -9141,8 +9166,19 @@ function _rlNorm(s) {
 function _rlFilterSort(items) {
   // 隠すのは「いま末尾にいる本」。読了記録があっても位置が戻っていれば（再読中・
   // 続きが出た）既定リストに残す（design_finished_sync.md §4-4）
+  // 著者モード: 検索語が蔵書のいずれかの著者名と完全一致したとき（design_finished_next.md §10-4）。
+  // 同じ著者の本を見たいので読了も含める — 隠すと「この著者の本 3 冊」なのに 1 冊しか出ない
+  const qn = _rlNorm(_rlQuery).trim();
+  let author = null;
+  if (qn) {
+    for (const it of items) {
+      const hit = _authorsOf(it).find(a => _rlNorm(a) === qn);
+      if (hit) { author = { name: hit }; break; }
+    }
+    if (author) author.count = items.filter(it => _authorsOf(it).some(a => _rlNorm(a) === qn)).length;
+  }
   // 例外: このセッションで読み終えた本は残す（design_finished_next.md §4）
-  let arr = _rlPrefs.showFinished ? items
+  let arr = (_rlPrefs.showFinished || author) ? items
           : items.filter(it => !it.atEnd || _rlJustFinished.has(it.key));
   const total = arr.length;
   if (_rlPrefs.filterReady)
@@ -9186,7 +9222,24 @@ function _rlFilterSort(items) {
     },
   }[_rlPrefs.sort] || byRecent;
   arr.sort(cmp);
-  return { shown: arr, total };
+  return { shown: arr, total, author };
+}
+
+// 著者バーの同期。中身は textContent / href で入れる（innerHTML にしない）
+function _rlSyncAuthorBar(author) {
+  const bar = document.getElementById('rl-author-bar');
+  if (!bar) return;
+  bar.classList.toggle('show', !!author);
+  if (!author) return;
+  bar.querySelector('.rl-ab-label').textContent = t('readingList.authorBar', { name: author.name, n: author.count });
+  const web = bar.querySelector('.rl-ab-web');
+  web.href = _authorSearchUrl(author.name);
+  web.textContent = '🔍 ' + t('finished.searchWeb') + ' ↗';
+}
+// カードの著者名。編集モードでは何もしない（CSS でも pointer-events を切っている）
+function rlAuthorClick(el) {
+  if (_editMode) return;
+  setRlAuthor(el.dataset.author || '');
 }
 
 function buildReadingList() {
@@ -9208,7 +9261,8 @@ function buildReadingList() {
   document.getElementById('reading-list-items').classList.toggle('view-grid', _rlPrefs.view === 'grid');
   dropEl.style.display = 'none';
   welcomeEl.classList.add('has-list');
-  const { shown, total } = _rlFilterSort(items);
+  const { shown, total, author } = _rlFilterSort(items);
+  _rlSyncAuthorBar(author);
   _rlRender(shown, total);
   _rlSyncToolsUI();
 }
@@ -9249,8 +9303,12 @@ function _rlRender(shown, total) {
     const thumbHtml = item.cover
       ? `<img src="${esc(item.cover)}" width="48" height="68" alt="" loading="lazy">`
       : BOOK_ICON;
-    const creatorHtml = item.creator
-      ? `<div class="rl-creator">${esc(item.creator)}</div>` : '';
+    // 著者ごとに押せる（同じ著者の本で絞り込む）。データは data-author で渡す（inline に埋めない規約）
+    const authors = _authorsOf(item);
+    const creatorHtml = authors.length
+      ? `<div class="rl-creator">${authors.map(n =>
+          `<span class="rl-author" role="button" data-author="${esc(n)}" title="${esc(t('readingList.authorFilter'))}" onclick="event.stopPropagation();rlAuthorClick(this)">${esc(n)}</span>`
+        ).join('・')}</div>` : '';
     // 連載中だけバッジを出す。完結は読了バッジと紛らわしく、本棚の大半が
     // 完結作品なので情報量が薄い
     const serialHtml = (item.serial && item.serial.indexOf('完結') < 0)
