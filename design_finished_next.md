@@ -6,7 +6,7 @@
 `design_bibliography_source_link.md`／`design_bibliography_v2.md`（著者検索・底本リンク）・
 `design_metadata_bookshelf.md`（`nd:*` メタ・連載状態）・`design_reading_list_v2.md`（読みかけリスト）
 
-**状態: 承認済み（2026-10-27）。§8 の 2 点は決定済み。§10 に現行コード確認での補正をまとめた。** 本書の範囲は第1弾の **A・B・C**。D・E・G は §7 に方針だけ置き、別の設計書で確定させる。F（タグからサイトのタグ一覧へ）は**不採用**（効果が小さく、サイトごとの URL 書式を持つと黙って壊れる）。
+**状態: 第1弾（A・B・C）実装済み（両ファイル）。** §8 の 2 点は決定済み。§10 に現行コード確認と実装での補正をまとめた。テストは `tests/cases/finished-panel.js`（両ファイル各 128 assertion）。実機確認は未実施。 本書の範囲は第1弾の **A・B・C**。D・E・G は §7 に方針だけ置き、別の設計書で確定させる。F（タグからサイトのタグ一覧へ）は**不採用**（効果が小さく、サイトごとの URL 書式を持つと黙って壊れる）。
 
 ---
 
@@ -226,3 +226,11 @@ yomikake にはまだクリップボードを使う箇所が無い。`navigator.
 ### 10-10. テスト
 
 `tests/cases/finished-panel.js`（`RAF_SHIM=1`）。fixture に `webnovel.epub`（`nd:serialStatus=連載中` / `nd:episodeCount=10` / `nd:updated` / `dc:source` にカクヨムの URL / `dcterms:modified`）を足す。
+
+### 10-11. 実装で決めたこと
+
+- **次の巻はシリーズ名があるときだけ出す**（§3-4 では ISBN でも出す案だった）。ISBN では同じ本の書誌にしか辿れず「次の巻」と書くと嘘になる。ISBN の書誌検索はヘルプに残っている。
+- **著者バーの ✕ は検索語だけ消す**（`setRlAuthor('')`）。`clearRlFilters()` はジャンルや「すぐ開ける」まで消してしまう。
+- **開いて 400ms（`FINISHED_GUARD_MS`）はボタン・背景タップ・Space/Enter を無視**し、キーリピートは常に握りつぶす（§3-5 の既定フォーカスだけでは、Enter の長押しで「閉じる→次へ→開く」を繰り返した）。
+- カードの著者名は `<span role="button">`（`<button>` は原子的なインラインなので、長い著者名に省略記号が付かず途中で切れる）。
+- 旧バナーの重なり順を見ていた `tests/cases/screen-filter.js` の行は削除した（パネルは `#main` の外の固定配置で、明るさフィルタと同じスタッキングコンテキストにいない）。

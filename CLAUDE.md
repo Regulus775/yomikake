@@ -195,6 +195,19 @@ Most features exist in both files. As a rule:
 - **同期告知トーストの条件は `isAhead && !isNotFinal && !_bookFinished`** — `isAhead` を外すと、自分が最終章を読んでいるだけの平常時に毎回「別の端末で読み終えています」が出る。`isNotFinal` ガード自体（位置ジャンプの抑制）は残し、**読了の取り込みだけを分離**する。`driveDownload` / インポートでは `jumped` を立てず `finishedNotice` フラグ経由で件数トーストの**後**に出す（アクショントーストは後勝ち）。
 - **読了の取り消しボタンは作らない** — 取り消しの同期には墓標相当の仕組みが要る。「本を開いて読み進めれば `atEnd` が false になり再読中として本棚に戻る」で代替する。
 
+**読了パネル（次の一冊への導線・v2.30.0 予定）** (`showFinishedBanner`/`dismissFinishedBanner`（名前は旧バナーのまま）, `_finishedRender`, `_finishedWorkHtml`, `_finishedSeriesHtml`, `_finishedAuthorHtml`, `finishedCopyUrl`, `finishedShowAuthor`, `_finishedOpen`, `_finishedOpenedAt`, `FINISHED_GUARD_MS`, `_finishedButton`, `_finishedBackdropClick`, `_fpListAuthor`, `_FP_ARCHIVE_SITES`, `_volumeInfo`, `_seriesInfoFromOpf`, `_generatedAtFromOpf`, `_authorsOf`, `_authorSearchUrl`, `_rlJustFinished`, `setRlAuthor`, `rlAuthorClick`, `_rlSyncAuthorBar`, `state.bookSeriesName`/`bookGeneratedAt` — 設計書 `design_finished_next.md`）。
+
+- 旧「読了バナー」を、本文の上に重なる `#finished-overlay`（`z-index:205`＝modal 200 と読書データ 210 の間）に置き換えた。PC は中央のダイアログ、`max-width:640px` は設定パネルと同じボトムシート。中身は「この作品」（底本 URL のある本）・「次の巻」（シリーズ名のある本）・「この著者の本」。**通信しない**（手元の情報だけ）。
+- **連載の情報は古いことがある**ので、`nd:*` を持つ本では `dcterms:modified`（novel_downloader が ePub を作った日時）を `bookGeneratedAt` として読み、「ダウンロード ○○（N 日前）の情報です」を必ず添える（30 日以上で強調）。**`nd:*` の無い本では読まない**（出版社の改訂日であって鮮度ではない）。最新の確認（設計書 §7-3 の G）は yomikake 本体でスクレイピングしない方針で、窓口 URL を 1 つ持つ形を別途設計する。
+- **⚠ 既定フォーカスは「この本に戻る」**（旧「閉じない」は何を閉じないのか読めなかった）。主ボタンの「読みかけリストへ」に置くと、末尾で Space/Enter を連打していた勢いで本を閉じる。さらに開いて `FINISHED_GUARD_MS`（400ms）は Space/Enter・ボタン・背景タップを無視し、キーリピートも握りつぶす（閉じる→次へ→開く の明滅を防ぐ）。
+- 表示中は `handleKey` の先頭近く（読書データの直後）で **Escape 以外を止める**。閉じたら `reclaimKeyFocus()` で本文へフォーカスを戻す（ボタンから外れたフォーカスが body に落ちると Space がブラウザのスクロールになる）。言語切替は `setLang()` から組み直す。
+- 「URL をコピー」は `DRIVE_RETRY_SKIP_SEL` に入れてある（clipboard もユーザー操作の権利が要る）。「読みかけリストへ」は入れない（ツールバーの「リストへ」と同じく、ここで Drive を取り直せば閉じるときの保存が通る）。clipboard が無い・拒否されたら選択済みの `<input readonly>` を出す。
+- **読み終えた本はセッションの間リストに残す**（`_rlJustFinished`・非永続）。⚠ **論理削除（`markAsFinished`）は位置を末尾に書くだけ**なので、`doDeleteBook()` で Set からも外さないと「削除したのに消えない」。
+- **著者は「・」で割らない**（`_authorsOf()`＝`creators` 優先・無ければ `creator` を丸ごと 1 名。`_rdAuthorRanking` と同じ規則）。外国人名が割れる。
+- **著者モード**: 検索語が蔵書の著者名と**完全一致**したら `_rlFilterSort()` が読了も含めて返し（`author` を戻り値に載せる）、`#rl-author-bar` を出す。新しい状態は持たない。カードの著者名は `<span class="rl-author">`（`<button>` だと省略記号が効かない）、データは `data-author` で渡す。
+- 次の巻は**シリーズ名があるときだけ**（ISBN だけでは同じ本の書誌にしか辿れない）。青空文庫などのアーカイブ（`_FP_ARCHIVE_SITES`）は底本リンクだけ出す。
+- テストは `tests/cases/finished-panel.js`（両ファイル各 128 assertion・fixture `webnovel.epub`・`--window-size=520,900` でボトムシートの寸法も測る）。**実機で見るのはボトムシートの見た目と、末尾で連打したときに本を閉じないこと。**
+
 **読み上げのバックグラウンド強化（v2.18.0）** (`TTS_KEEPALIVE_HZ`, `TTS_KEEPALIVE_AMP`, `_ttsMakeKeepAliveUri`, `_ttsKeepAliveStart`/`_ttsKeepAliveStop`, `_ttsKeepAudio`, `ttsSyncMediaSession`, `_ttsInitMediaSession`, `_ttsMsSpine`, `toggleTtsKeepAlive`, `updateTtsKeepAliveUI`, `TTS_LOOKAHEAD`, `ttsRestartQueue`, `ttsFillQueue`, `_ttsMakeUtterance`, `_ttsUnpauseForSeek`, `_tts.queuedTo`, `_ttsAdvancing`, `state.ttsKeepAlive` — 設計書 `design_tts_background.md`)。
 
 - **`speechSynthesis` はブラウザから見て「メディア再生」ではない。** だからタブの *audible* フラグが立たず、背面タブの凍結（Page Lifecycle）とタイマースロットリングをそのまま食らうし、Media Session にも登録できない。利用者側の設定（電池最適化の解除・PiP 許可・通知許可・PWA インストール）はすべて**動画/ネイティブメディア向け**なので一切効かない。`design_tts.md` の「バックグラウンド再生は技術的に不可能」は `speechSynthesis` を使う限り正しく、**真の解決は「実音声にする」（クラウド TTS / WASM ニューラル TTS）以外にない**。v2.18.0 はその手前の延命策で、Android で効く保証はない。
