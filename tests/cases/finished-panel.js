@@ -129,14 +129,28 @@ openFixture('webnovel.epub')
   T('共著: 作者ページだけ出る', al.length === 1 && al[0].href === 'https://kakuyomu.jp/users/web_author',
     al.map(function (a) { return a.href; }).join(','));
   state.bookCreators = savedCr;
-  // サイト名が分からなければ括弧ごと省く
+  // サイト名は作者ページ自身の URL から取る（底本のサイト名ではない）
   var savedSite = state.bookSourceSite;
-  state.bookSourceSite = '';
+  state.bookSourceSite = 'example.com';
   _finishedRender();
   al = authorLinks();
-  T('サイト名なし: 括弧を出さない', al[0] && al[0].textContent.indexOf('作者ページ ↗') >= 0
-    && al[0].textContent.indexOf('（') < 0, al[0] && al[0].textContent);
+  T('サイト名は作者ページの URL から', al[0] && al[0].textContent.indexOf('作者ページ（カクヨム）') >= 0,
+    al[0] && al[0].textContent);
   state.bookSourceSite = savedSite;
+  var savedAu = state.bookAuthorUrl;
+  state.bookAuthorUrl = 'https://mypage.syosetu.com/1866242/';
+  T('なろうの mypage もサイト名つき', _authorPageLabel() === '作者ページ（小説家になろう）', _authorPageLabel());
+  state.bookAuthorUrl = 'https://my.neopage.com/uid/1';
+  T('ネオページの my. もサイト名つき', _authorPageLabel() === '作者ページ（ネオページ）', _authorPageLabel());
+  // 著者名の無い本でも作者ページは出る
+  state.bookAuthorUrl = savedAu;
+  var savedCreator = state.bookCreator;
+  state.bookCreators = []; state.bookCreator = '';
+  _finishedRender();
+  al = authorLinks();
+  T('著者名なし: 作者ページだけ出る', al.length === 1 && al[0].href === 'https://kakuyomu.jp/users/web_author',
+    al.map(function (a) { return a.href; }).join(','));
+  state.bookCreators = savedCr; state.bookCreator = savedCreator;
   _finishedRender();
   // ヘルプの書誌ブロック: 底本リンクの行に並べる
   var hp = document.createElement('div');
@@ -145,7 +159,7 @@ openFixture('webnovel.epub')
   T('ヘルプ: 底本と作者ページが同じ行', hp.querySelectorAll('p').length === 1 && ha.length === 2
     && ha[0].href.indexOf('kakuyomu.jp/works/') >= 0 && ha[1].href === 'https://kakuyomu.jp/users/web_author',
     hp.innerHTML);
-  T('ヘルプ: 作者ページの文言・別タブ', ha[1] && ha[1].textContent.indexOf('作者ページ') >= 0
+  T('ヘルプ: 作者ページの文言はパネルと同じ', ha[1] && ha[1].textContent.indexOf('作者ページ（カクヨム）') >= 0
     && ha[1].target === '_blank' && /noopener/.test(ha[1].rel));
   // 底本の無い本でも作者ページは単独で出す
   var savedSrc = state.bookSourceUrl, savedIsbn = state.bookSourceIsbn;
@@ -153,6 +167,13 @@ openFixture('webnovel.epub')
   hp.innerHTML = _helpSourceHtml();
   T('ヘルプ: 底本なしでも作者ページは出る', hp.querySelectorAll('a').length === 1
     && hp.querySelector('a').href === 'https://kakuyomu.jp/users/web_author');
+  // ISBN だけの本: ISBN の行（NDL 検索）を残して作者ページを並べる
+  state.bookSourceIsbn = '9784000000002';
+  hp.innerHTML = _helpSourceHtml();
+  ha = hp.querySelectorAll('a');
+  T('ヘルプ: ISBN の行は消えない', hp.textContent.indexOf('9784000000002') >= 0 && ha.length === 2
+    && ha[0].href.indexOf('ndlsearch.ndl.go.jp') >= 0 && ha[1].href === 'https://kakuyomu.jp/users/web_author',
+    hp.innerHTML);
   state.bookSourceUrl = savedSrc; state.bookSourceIsbn = savedIsbn;
   T('読了は記録済み（パネルが出た時点）', !!JSON.parse(localStorage.getItem(state.bookKey)).finishedAt);
   T('このセッションの読了に入る', _rlJustFinished.has(state.bookKey));
