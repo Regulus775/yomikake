@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>次の巻を選ぶ導線の検査</title>
+<style>
+  body { font:15px/1.7 system-ui,-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;
+         margin:0; padding:16px; background:#FDF8F0; color:#222; }
+  h1 { font-size:18px; margin:0 0 8px; }
+  h2 { font-size:15px; margin:20px 0 6px; }
+  .note { font-size:13px; color:#555; background:#fff; border:1px solid #ddd;
+          border-radius:6px; padding:10px 12px; margin:0 0 14px; }
+  .case { background:#fff; border:1px solid #ccc; border-radius:6px; padding:8px 10px; margin:0 0 10px; }
+  .case p { margin:2px 0 6px; font-size:13px; color:#444; }
+  .row { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:4px 0; }
+  .tag { font-family:ui-monospace,monospace; font-weight:700; }
+  button { font:14px system-ui; padding:6px 12px; border-radius:6px; border:1px solid #999;
+           background:#fff; cursor:pointer; }
+  button.primary { background:#8a5a2b; color:#fff; border-color:#8a5a2b; }
+  button.obs { font-size:12px; padding:4px 8px; background:#f4efe6; }
+  input[type=text], textarea { font:14px system-ui; padding:6px 8px; border:1px solid #999; border-radius:6px;
+                               width:min(360px, 100%); box-sizing:border-box; }
+  #log { white-space:pre-wrap; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+         background:#fff; border:1px solid #ccc; border-radius:6px; padding:8px; min-height:80px;
+         overflow-wrap:anywhere; }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  #env { font-size:12px; color:#555; }
+</style>
+</head>
+<body>
+
+<h1>次の巻を選ぶ導線の検査</h1>
+
+<div class="note">
+  <b>知りたいこと</b>（読了パネルの「📂 次の巻を選ぶ」の設計に使う。設計書 <code>design_series_next.md</code> 予定）<br>
+  (1) ファイル選択を<b>前に開いた本と同じフォルダ</b>から開けるか（<code>startIn</code> にファイルのハンドルを渡す。PC・Android の Chrome）<br>
+  (2) <b>1 回のタップ</b>で「クリップボードにシリーズ名を入れる」と「ファイル選択を開く」の両方が通るか（全環境）<br>
+  (3) ファイル選択の<b>検索欄に貼り付けて絞り込めるか</b>（全環境・目視）<br><br>
+  <b>置き場所</b>: https で開くこと（ファイル選択の API とクリップボードは https でしか動かない）。
+  <code>https://www.ayati.com/book/tests/probe/next-volume-picker.html</code> など。<br><br>
+  <b>手順</b><br>
+  1. <span class="tag">[0]</span> で、シリーズ物の 1 冊（例: RAIL WARS! 2）を選ぶ。これが「いま読んでいる本」の代わり。<br>
+  2. <span class="tag">[A]〜[G]</span> を順に押し、それぞれの下の観察ボタンで<b>見えたこと</b>を記録する（ファイル選択は選ばずに閉じてもよい）。<br>
+  3. <span class="tag">[B]</span> は<b>ページを再読み込みしてから</b>押す（実際の yomikake では前回の起動で保存したハンドルを使うため）。<br>
+  4. 最後に「ログをコピー」して持ち帰る。ファイル名以外の中身は読まない。
+</div>
+
+<div id="env"></div>
+
+<h2>シリーズ名（クリップボードに入れる文字）</h2>
+<div class="row"><input type="text" id="series" value="RAIL"></div>
+<div class="note" style="margin-top:6px;">ファイル名に含まれる短い語にする（例: <code>RAIL</code>）。全角／半角の違いで当たらないことがあるので、それも見る。</div>
+
+<h2>基準の本</h2>
+<div class="case">
+  <div class="row"><button class="primary" onclick="pickBase()"><span class="tag">[0]</span> 基準の本を選ぶ</button>
+    <span id="baseName">（未選択）</span></div>
+  <p>選んだファイルのハンドルをこのページの IndexedDB に保存する（再読み込み後の <span class="tag">[B]</span> で使う）。ファイル選択 API の無い環境（iOS など）では保存されない。</p>
+</div>
+
+<h2>(1) 同じフォルダから開けるか</h2>
+<div class="case">
+  <div class="row"><button onclick="caseA()"><span class="tag">[A]</span> 同じフォルダから開く（選んだ直後のハンドル）</button></div>
+  <div class="row" data-obs="A"></div>
+</div>
+<div class="case">
+  <div class="row"><button onclick="caseB()"><span class="tag">[B]</span> 同じフォルダから開く（再読み込み後・保存したハンドル）</button></div>
+  <p>先にページを再読み込みしてから押す。</p>
+  <div class="row" data-obs="B"></div>
+</div>
+<div class="case">
+  <div class="row"><button onclick="caseC()"><span class="tag">[C]</span> 比較用: 何も指定せずに開く（今の yomikake と同じ）</button></div>
+  <p>どこから開くかを見る（前回の場所／ダウンロード／最近使った項目 など）。</p>
+  <div class="row" data-obs="C"></div>
+</div>
+
+<h2>(2)(3) 1 回のタップでクリップボード＋ファイル選択</h2>
+<div class="case">
+  <div class="row"><button onclick="caseD()"><span class="tag">[D]</span> クリップボード（待たない）→ すぐファイル選択</button></div>
+  <p>本命。yomikake ではこの形にしたい。開いたファイル選択の検索欄に貼り付けて、絞り込めるかを見る。</p>
+  <div class="row" data-obs="D"></div>
+</div>
+<div class="case">
+  <div class="row"><button onclick="caseE()"><span class="tag">[E]</span> クリップボード（書き込みを待つ）→ ファイル選択</button></div>
+  <p>書き込みの完了を待ってから開く。待つ間にタップの効力が切れて、ファイル選択が開かないかもしれない。</p>
+  <div class="row" data-obs="E"></div>
+</div>
+<div class="case">
+  <div class="row"><button onclick="caseF()"><span class="tag">[F]</span> クリップボード → <code>&lt;input type=file&gt;</code>（iOS と同じ経路）</button></div>
+  <div class="row" data-obs="F"></div>
+</div>
+<div class="case">
+  <div class="row"><button onclick="caseG()"><span class="tag">[G]</span> 比較用: ファイル選択が閉じた後にクリップボード</button></div>
+  <p>タップから時間が経っても書き込めるか（通るなら、ファイル選択を先に開く形でもよい）。</p>
+  <div class="row" data-obs="G"></div>
+</div>
+
+<h2>クリップボードの中身の確認</h2>
+<div class="case">
+  <p>ここに貼り付けて、シリーズ名が入っているかを見る（入っていなければ、ログ上で「成功」でも実際には入っていない）。</p>
+  <div class="row"><textarea id="paste" rows="2" placeholder="ここに貼り付け"></textarea></div>
+  <div class="row"><button onclick="checkPaste()">貼り付けた中身を記録</button></div>
+</div>
+
+<h2>ログ</h2>
+<div class="row"><button onclick="copyLog()">ログをコピー</button><button onclick="clearLog()">ログを消す</button></div>
+<div id="log"></div>
+
+<input type="file" id="fileInput" accept=".epub,.kepub,application/epub+zip" style="display:none">
+
+<script>
+const $ = id => document.getElementById(id);
+const hasFSA = typeof window.showOpenFilePicker === 'function';
+const hasClip = !!(navigator.clipboard && navigator.clipboard.writeText);
+const LOGKEY = 'probe_nv_log';
+let baseHandle = null;
+
+function now() { const d = new Date(); return d.toTimeString().slice(0, 8); }
+function log(s) {
+  const line = '[' + now() + '] ' + s;
+  let all = '';
+  try { all = (localStorage.getItem(LOGKEY) || '') + line + '\n'; localStorage.setItem(LOGKEY, all); } catch (e) { all = $('log').textContent + line + '\n'; }
+  $('log').textContent = all;
+}
+function clearLog() { try { localStorage.removeItem(LOGKEY); } catch (e) {} $('log').textContent = ''; }
+function copyLog() {
+  const txt = $('log').textContent;
+  (hasClip ? navigator.clipboard.writeText(txt) : Promise.reject()).then(
+    () => alert('ログをコピーしました'),
+    () => { const r = document.createRange(); r.selectNodeContents($('log')); getSelection().removeAllRanges(); getSelection().addRange(r); alert('選択したので手でコピーしてください'); });
+}
+const series = () => $('series').value;
+
+// ── IndexedDB（ハンドルの保存）──
+function idb() {
+  return new Promise((res, rej) => {
+    const q = indexedDB.open('probe_next_volume', 1);
+    q.onupgradeneeded = () => q.result.createObjectStore('h');
+    q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
+  });
+}
+async function idbPut(v) { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction('h', 'readwrite'); tx.objectStore('h').put(v, 'base'); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); }
+async function idbGet() { const db = await idb(); return new Promise((res, rej) => { const q = db.transaction('h').objectStore('h').get('base'); q.onsuccess = () => res(q.result || null); q.onerror = () => rej(q.error); }); }
+
+const TYPES = [{ description: 'ePub', accept: { 'application/epub+zip': ['.epub', '.kepub'] } }];
+function errName(e) { return e ? (e.name || '') + (e.message ? ': ' + e.message : '') : '?'; }
+
+async function pickBase() {
+  if (!hasFSA) {
+    log('[0] showOpenFilePicker が無い環境。ハンドルは保存できない（[A][B][D] は対象外）');
+    return;
+  }
+  try {
+    const [h] = await showOpenFilePicker({ types: TYPES });
+    baseHandle = h;
+    $('baseName').textContent = h.name;
+    try { await idbPut(h); log('[0] 基準の本: ' + h.name + '（IndexedDB に保存）'); }
+    catch (e) { log('[0] 基準の本: ' + h.name + '（IndexedDB 保存に失敗: ' + errName(e) + '）'); }
+  } catch (e) { log('[0] 失敗: ' + errName(e)); }
+}
+
+// ファイル選択を開く。結果を log して返す
+async function openPicker(tag, opts) {
+  if (!hasFSA) { log('[' + tag + '] showOpenFilePicker が無い'); return; }
+  const t0 = performance.now();
+  try {
+    const [h] = await showOpenFilePicker(Object.assign({ types: TYPES }, opts || {}));
+    let same = '';
+    if (baseHandle && h.isSameEntry) { try { same = (await h.isSameEntry(baseHandle)) ? '（基準の本と同じファイル）' : ''; } catch (e) {} }
+    log('[' + tag + '] 選択: ' + h.name + same + '（' + Math.round(performance.now() - t0) + 'ms）');
+  } catch (e) {
+    log('[' + tag + '] ' + (e && e.name === 'AbortError' ? '閉じた（AbortError）＝ファイル選択は開いた' : '開けなかった: ' + errName(e)));
+  }
+}
+
+async function caseA() {
+  if (!baseHandle) { log('[A] 先に [0] で基準の本を選ぶ'); return; }
+  await openPicker('A', { startIn: baseHandle });
+}
+async function caseB() {
+  let h = null;
+  try { h = await idbGet(); } catch (e) { log('[B] IndexedDB 読み出し失敗: ' + errName(e)); return; }
+  if (!h) { log('[B] 保存したハンドルが無い（先に [0]）'); return; }
+  let perm = '?';
+  try { perm = await h.queryPermission({ mode: 'read' }); } catch (e) { perm = 'err ' + errName(e); }
+  log('[B] 保存したハンドル: ' + h.name + ' / 読み取り権限: ' + perm + ' / 再読み込み後: ' + (baseHandle ? 'いいえ（同じページのまま）' : 'はい'));
+  baseHandle = baseHandle || h;
+  await openPicker('B', { startIn: h });
+}
+async function caseC() { await openPicker('C', {}); }
+
+function clipNoWait(tag) {
+  if (!hasClip) { log('[' + tag + '] clipboard.writeText が無い'); return; }
+  const s = series();
+  try {
+    navigator.clipboard.writeText(s).then(
+      () => log('[' + tag + '] クリップボード: 成功「' + s + '」'),
+      e => log('[' + tag + '] クリップボード: 失敗 ' + errName(e)));
+  } catch (e) { log('[' + tag + '] クリップボード: 例外 ' + errName(e)); }
+}
+async function caseD() {
+  clipNoWait('D');
+  if (hasFSA) await openPicker('D', baseHandle ? { startIn: baseHandle } : {});
+  else { log('[D] showOpenFilePicker が無いので <input type=file> で開く'); $('fileInput').dataset.tag = 'D'; $('fileInput').click(); }
+}
+async function caseE() {
+  if (!hasClip) { log('[E] clipboard.writeText が無い'); return; }
+  const s = series();
+  try { await navigator.clipboard.writeText(s); log('[E] クリップボード: 成功「' + s + '」'); }
+  catch (e) { log('[E] クリップボード: 失敗 ' + errName(e)); }
+  if (hasFSA) await openPicker('E', baseHandle ? { startIn: baseHandle } : {});
+  else { $('fileInput').dataset.tag = 'E'; $('fileInput').click(); log('[E] <input type=file>.click() を呼んだ（開いたかは目視）'); }
+}
+function caseF() {
+  clipNoWait('F');
+  $('fileInput').dataset.tag = 'F';
+  $('fileInput').value = '';
+  $('fileInput').click();
+  log('[F] <input type=file>.click() を呼んだ（開いたかは目視）');
+}
+async function caseG() {
+  if (hasFSA) await openPicker('G', baseHandle ? { startIn: baseHandle } : {});
+  else {
+    await new Promise(res => {
+      const inp = $('fileInput'); inp.dataset.tag = 'G'; inp.value = '';
+      const done = () => { inp.removeEventListener('change', done); inp.removeEventListener('cancel', done); res(); };
+      inp.addEventListener('change', done); inp.addEventListener('cancel', done);
+      inp.click();
+      setTimeout(done, 60000);
+    });
+  }
+  clipNoWait('G');
+}
+$('fileInput').addEventListener('change', e => {
+  const f = e.target.files && e.target.files[0];
+  log('[' + (e.target.dataset.tag || '?') + '] <input> 選択: ' + (f ? f.name : '（なし）'));
+});
+$('fileInput').addEventListener('cancel', e => log('[' + (e.target.dataset.tag || '?') + '] <input> キャンセル＝ファイル選択は開いた'));
+
+function checkPaste() {
+  const v = $('paste').value;
+  log('[貼り付け] 「' + v + '」' + (v === series() ? '（シリーズ名と一致）' : '（シリーズ名「' + series() + '」と不一致）'));
+}
+
+// ── 観察ボタン（見えたことを 1 タップで記録）──
+const OBS = {
+  A: ['基準の本と同じフォルダで開いた', '別のフォルダで開いた', 'ファイル選択が開かなかった'],
+  B: ['基準の本と同じフォルダで開いた', '別のフォルダで開いた', 'ファイル選択が開かなかった'],
+  C: ['前回の場所で開いた', 'ダウンロード等の決まった場所', '最近使った項目', 'その他'],
+  D: ['ファイル選択が開いた', '開かなかった', '検索欄に貼り付けて絞り込めた', '検索欄はあるが絞り込めない', '検索欄が無い', '貼り付けできなかった'],
+  E: ['ファイル選択が開いた', '開かなかった'],
+  F: ['ファイル選択が開いた', '開かなかった', '検索欄に貼り付けて絞り込めた', '検索欄はあるが絞り込めない', '検索欄が無い', '貼り付けできなかった'],
+  G: ['クリップボード成功（ログ）', 'クリップボード失敗（ログ）'],
+};
+document.querySelectorAll('[data-obs]').forEach(div => {
+  const tag = div.dataset.obs;
+  div.innerHTML = '<span style="font-size:12px;color:#777;">見えたこと:</span>';
+  OBS[tag].forEach(txt => {
+    const b = document.createElement('button');
+    b.className = 'obs'; b.textContent = txt;
+    b.onclick = () => log('[' + tag + '] 観察: ' + txt);
+    div.appendChild(b);
+  });
+});
+
+// ── 環境 ──
+(async function () {
+  try { $('log').textContent = localStorage.getItem(LOGKEY) || ''; } catch (e) {}
+  const env = 'UA: ' + navigator.userAgent + '\nsecure: ' + isSecureContext + ' / showOpenFilePicker: ' + hasFSA +
+              ' / clipboard.writeText: ' + hasClip + ' / standalone: ' + (matchMedia('(display-mode: standalone)').matches || !!navigator.standalone);
+  $('env').textContent = env;
+  log('── ページ読み込み ──\n' + env);
+  try { const h = await idbGet(); if (h) log('保存済みハンドル: ' + h.name + '（[B] で使える）'); } catch (e) {}
+})();
+</script>
+</body>
+</html>
