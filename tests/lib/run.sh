@@ -29,6 +29,7 @@ declare -A CASE_ENV=(
   [blank-lines]="RAF_SHIM=1 VTB=45000"
   [finished-panel]="RAF_SHIM=1 VTB=40000"
   [drive-sync-race]="RAF_SHIM=1 VTB=40000"
+  [series-next]="RAF_SHIM=1 VTB=40000"
 )
 declare -A CASE_FLAGS=(
   [e2e-reflow]="--allow-file-access-from-files"
@@ -49,6 +50,7 @@ declare -A CASE_FLAGS=(
   # 読了パネルはスマホ幅（≤640px）でボトムシートになることも測る
   [finished-panel]="--allow-file-access-from-files --window-size=520,900"
   [drive-sync-race]="--allow-file-access-from-files"
+  [series-next]="--allow-file-access-from-files --window-size=520,900"
   # sw.js を fetch してフォント保存の判定関数を叩く
   [sw-fonts]="--allow-file-access-from-files"
 )
