@@ -149,6 +149,8 @@
 
 novel_downloader が `nd:authorUrl`（例: なろうの mypage・カクヨムの users ページ）を出力する。yomikake 側は `_ndMeta(opfDoc, 'authorUrl')` を読み、http(s) のときだけ「作者ページ ↗」を出す（Google 検索より優先）。**novel_downloader の改修を先に行い、yomikake の受け側はその後**。
 
+→ 各サイトの実測と両側の設計は **novel_downloader の `design_author_url.md`**（2026-10-27）。
+
 ### 7-3. G. 連載の更新をその場で確かめる
 
 オンラインで使っているときの価値は大きい。ただし**十数サイトのスクレイピングを yomikake 本体に持つのは筋が違う**（novel_downloader の担当で、二重実装になる）し、ブラウザから各サイトを直接読むのは CORS で弾かれる見込みが高い（要実測）。そこで次の形を検討する。
