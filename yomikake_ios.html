@@ -372,13 +372,41 @@
   #rl-no-match button:hover { background:var(--accent); color:#fff; }
 
   /* ── 読了バナー ── */
-  #finished-banner { display:none; position:absolute; bottom:20px; left:50%; transform:translateX(-50%); z-index:50; background:var(--backdrop); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); border:1px solid var(--glass-border); border-radius:16px; padding:14px 20px; box-shadow:0 8px 32px var(--shadow); white-space:nowrap; align-items:center; gap:12px; animation:fadeIn .3s ease; }
-  #finished-banner.show { display:flex; }
-  #finished-banner-msg { font-size:14px; font-weight:600; }
-  #finished-banner-close-btn { font-size:13px; font-weight:700; color:var(--accent); background:transparent; border:1.5px solid var(--accent); border-radius:10px; padding:5px 14px; cursor:pointer; transition:all .15s; }
-  #finished-banner-close-btn:hover { background:var(--accent); color:#fff; }
-  #finished-banner-dismiss-btn { font-size:12px; opacity:.55; background:transparent; border:none; cursor:pointer; color:var(--ui-text); padding:4px 6px; }
-  #finished-banner-dismiss-btn:hover { opacity:1; }
+  /* ── 読了パネル（design_finished_next.md）──
+     最終ページから先へ進んだときに本文の上へ重ねる。PC は中央のダイアログ、スマホは
+     設定パネルと同じボトムシート。z-index:205 は modal(200) と読書データ(210) の間 */
+  #finished-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); z-index:205; display:none; align-items:center; justify-content:center; padding:16px; }
+  #finished-overlay.show { display:flex; }
+  #finished-box { background:var(--ui-bg); color:var(--ui-text); border:1px solid var(--ui-border); border-radius:16px; width:100%; max-width:440px; max-height:80vh; display:flex; flex-direction:column; box-shadow:0 16px 48px rgba(0,0,0,.3); animation:fadeIn .25s ease; outline:none; }
+  #finished-body { overflow-y:auto; padding:22px 24px 10px; }
+  .fp-head { font-size:18px; font-weight:600; margin-bottom:14px; }
+  .fp-book { display:flex; gap:12px; align-items:flex-start; }
+  .fp-cover { width:48px; height:68px; object-fit:cover; border-radius:4px; flex-shrink:0; box-shadow:0 1px 4px rgba(0,0,0,.2); }
+  .fp-title { font-size:15px; font-weight:600; line-height:1.5; overflow-wrap:anywhere; }
+  .fp-authors { font-size:13px; opacity:.8; margin-top:2px; overflow-wrap:anywhere; }
+  .fp-sec { margin-top:18px; padding-top:12px; border-top:1px solid var(--ui-border); }
+  .fp-sec > h4 { font-size:12px; font-weight:600; opacity:.6; margin-bottom:6px; }
+  .fp-sec p { font-size:13px; line-height:1.7; }
+  .fp-stale { font-size:12px; opacity:.6; }
+  .fp-stale.fp-old { opacity:1; color:var(--accent); }
+  .fp-links { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+  .fp-btn { font-size:13px; font-weight:600; border:1px solid var(--ui-border); border-radius:8px; padding:7px 12px; background:transparent; color:inherit; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:4px; line-height:1.3; }
+  .fp-btn:hover { filter:brightness(1.08); border-color:var(--accent); }
+  .fp-btn.fp-accent { color:var(--accent); border-color:var(--accent); }
+  .fp-btn.fp-inline { padding:2px 10px; margin-left:6px; font-size:12px; }
+  .fp-copybox { width:100%; margin-top:8px; font-size:12px; padding:6px 8px; border:1px solid var(--ui-border); border-radius:6px; background:transparent; color:inherit; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  #finished-actions { display:flex; justify-content:flex-end; gap:10px; padding:12px 24px 18px; border-top:1px solid var(--ui-border); }
+  #finished-actions button { min-height:40px; font-size:14px; font-weight:600; border-radius:10px; padding:8px 18px; cursor:pointer; }
+  #finished-stay-btn { background:transparent; border:1px solid var(--ui-border); color:var(--ui-text); }
+  #finished-list-btn { background:var(--accent); border:1px solid var(--accent); color:#fff; }
+  #finished-list-btn:hover { filter:brightness(1.1); }
+  @media (max-width:640px) {
+    #finished-overlay { align-items:flex-end; padding:0; }
+    #finished-box { max-width:none; border-radius:18px 18px 0 0; border-bottom:none; max-height:min(82dvh, calc(100dvh - 56px)); }
+    #finished-body { padding:18px 18px 8px; }
+    #finished-actions { padding:10px 18px calc(14px + env(safe-area-inset-bottom, 0px)); }
+    #finished-actions button { flex:1; min-height:44px; }
+  }
 
   /* ── 設定ポップオーバー内 しおりJSON入出力ボタン ── */
   .set-io-btn { flex:1; font-size:13px; font-weight:600; color:var(--ui-text); background:var(--ui-bg); border:1px solid var(--ui-border); border-radius:8px; padding:7px 14px; cursor:pointer; transition:all .15s; white-space:nowrap; }
@@ -1437,11 +1465,6 @@
         <button id="tts-handoff-btn" onclick="showTtsHandoff()" data-i18n-title="btn.handoff">📤</button>
       </div>
     </div>
-    <div id="finished-banner">
-      <span id="finished-banner-msg" data-i18n="finished.msg">📖 最後まで読みました</span>
-      <button id="finished-banner-close-btn" onclick="closeBook()" data-i18n="finished.backToList">読みかけリストへ</button>
-      <button id="finished-banner-dismiss-btn" onclick="dismissFinishedBanner()" data-i18n="finished.dismiss">閉じない</button>
-    </div>
     <!-- 画面の明るさ・暖色フィルタ。#reading-area の最後の子なので読みかけリストも覆う
          （夜に本を閉じたとき本棚で目を焼かれないように）。z-index:15 の根拠は CSS 側のコメント参照 -->
     <div id="screen-filter" aria-hidden="true"></div>
@@ -1467,6 +1490,16 @@
     <div id="loading-spinner"></div>
     <div id="loading-stage" data-i18n="loading.unzipping">📦 ePubを展開中…</div>
     <div id="loading-file"></div>
+  </div>
+</div>
+
+<div id="finished-overlay" onclick="if(event.target===this)_finishedBackdropClick()">
+  <div id="finished-box" role="dialog" aria-modal="true" aria-labelledby="finished-title">
+    <div id="finished-body"></div>
+    <div id="finished-actions">
+      <button id="finished-stay-btn" onclick="_finishedButton(dismissFinishedBanner)" data-i18n="finished.dismiss">この本に戻る</button>
+      <button id="finished-list-btn" onclick="_finishedButton(closeBook)" data-i18n="finished.backToList">読みかけリストへ</button>
+    </div>
   </div>
 </div>
 
@@ -1968,7 +2001,21 @@ const I18N = {
     'readingList.purgeOk':      '完全に削除する',
     'finished.msg':         '📖 最後まで読みました',
     'finished.backToList':  '読みかけリストへ',
-    'finished.dismiss':     '閉じない',
+    'finished.dismiss':     'この本に戻る',
+    'finished.secWork':     'この作品',
+    'finished.siteHasMore': 'サイトでは {total} 話まで（この本は {n} 話）',
+    'finished.asOf':        'ダウンロード {date}（{days} 日前）の情報です',
+    'finished.asOfToday':   'ダウンロード {date}（今日）の情報です',
+    'finished.checkOnSite': '{site}で続きを確認',
+    'finished.copyUrl':     'URL をコピー',
+    'finished.secNext':     '次の巻',
+    'finished.findNext':    '次の巻を探す（国立国会図書館サーチ）',
+    'finished.secAuthor':   'この著者の本',
+    'finished.ownedByAuthor': '蔵書に {n} 冊',
+    'finished.showInList':  'リストで見る',
+    'finished.searchWeb':   'Web で探す',
+    'toast.urlCopied':      'URL をコピーしました',
+    'toast.urlCopyManual':  'コピーできませんでした。表示した URL を選んでコピーしてください',
     'readingData.title':          '📊 読書データ',
     'readingData.allBooks':       'すべての本',
     'readingData.completionRate': '読了率',
@@ -2434,7 +2481,21 @@ const I18N = {
     'readingList.purgeOk':      'Delete permanently',
     'finished.msg':         '📖 Finished reading',
     'finished.backToList':  'Back to reading list',
-    'finished.dismiss':     'Stay',
+    'finished.dismiss':     'Back to the book',
+    'finished.secWork':     'This work',
+    'finished.siteHasMore': 'The site had {total} episodes (this book has {n})',
+    'finished.asOf':        'As of the download on {date} ({days} days ago)',
+    'finished.asOfToday':   'As of the download on {date} (today)',
+    'finished.checkOnSite': 'Check {site} for new episodes',
+    'finished.copyUrl':     'Copy URL',
+    'finished.secNext':     'Next volume',
+    'finished.findNext':    'Find the next volume (NDL Search)',
+    'finished.secAuthor':   'By this author',
+    'finished.ownedByAuthor': '{n} in your library',
+    'finished.showInList':  'Show in list',
+    'finished.searchWeb':   'Search the web',
+    'toast.urlCopied':      'URL copied',
+    'toast.urlCopyManual':  'Couldn’t copy automatically — select the URL shown and copy it',
     'readingData.title':          '📊 Reading Data',
     'readingData.allBooks':       'All books',
     'readingData.completionRate': 'Completion',
@@ -2900,7 +2961,21 @@ const I18N = {
     'readingList.purgeOk':      '完全刪除',
     'finished.msg':         '📖 已讀完全書',
     'finished.backToList':  '回到閱讀清單',
-    'finished.dismiss':     '繼續閱讀',
+    'finished.dismiss':     '回到本書',
+    'finished.secWork':     '這部作品',
+    'finished.siteHasMore': '網站上有 {total} 話（本書收錄 {n} 話）',
+    'finished.asOf':        '下載於 {date}（{days} 天前）時的資訊',
+    'finished.asOfToday':   '下載於 {date}（今天）時的資訊',
+    'finished.checkOnSite': '到 {site} 查看後續',
+    'finished.copyUrl':     '複製網址',
+    'finished.secNext':     '下一卷',
+    'finished.findNext':    '尋找下一卷（NDL Search）',
+    'finished.secAuthor':   '此作者的書',
+    'finished.ownedByAuthor': '書架上有 {n} 本',
+    'finished.showInList':  '在清單中查看',
+    'finished.searchWeb':   '在網路上搜尋',
+    'toast.urlCopied':      '已複製網址',
+    'toast.urlCopyManual':  '無法自動複製，請選取顯示的網址後複製',
     'readingData.title':          '📊 閱讀數據',
     'readingData.allBooks':       '所有書籍',
     'readingData.completionRate': '完成率',
@@ -3366,7 +3441,21 @@ const I18N = {
     'readingList.purgeOk':      '完全删除',
     'finished.msg':         '📖 已读完全书',
     'finished.backToList':  '回到阅读列表',
-    'finished.dismiss':     '继续阅读',
+    'finished.dismiss':     '回到本书',
+    'finished.secWork':     '这部作品',
+    'finished.siteHasMore': '网站上有 {total} 话（本书收录 {n} 话）',
+    'finished.asOf':        '下载于 {date}（{days} 天前）时的信息',
+    'finished.asOfToday':   '下载于 {date}（今天）时的信息',
+    'finished.checkOnSite': '到 {site} 查看后续',
+    'finished.copyUrl':     '复制网址',
+    'finished.secNext':     '下一卷',
+    'finished.findNext':    '查找下一卷（NDL Search）',
+    'finished.secAuthor':   '此作者的书',
+    'finished.ownedByAuthor': '书架上有 {n} 本',
+    'finished.showInList':  '在列表中查看',
+    'finished.searchWeb':   '在网上搜索',
+    'toast.urlCopied':      '已复制网址',
+    'toast.urlCopyManual':  '无法自动复制，请选中显示的网址后复制',
     'readingData.title':          '📊 阅读数据',
     'readingData.allBooks':       '所有书籍',
     'readingData.completionRate': '完成率',
@@ -3455,6 +3544,7 @@ function setLang(lang) {
   if (document.getElementById('modal-overlay').classList.contains('show')) {
     updateHelpContent();
   }
+  if (_finishedOpen) _finishedRender();
 }
 
 function applyI18n() {
@@ -6925,6 +7015,14 @@ function handleKey(e) {
     if (raw === 'Escape') { closeReadingData(); e.preventDefault(); }
     return;
   }
+  // 読了パネル表示中は Escape で「この本に戻る」だけ（裏のページ送りを止める）。
+  // 開いた直後とキーリピートの Space/Enter は握りつぶす — 末尾で連打していた勢いで
+  // フォーカス中のボタンが押され、閉じる→次へ→開く を繰り返さないように
+  if (_finishedOpen) {
+    if (raw === 'Escape') { dismissFinishedBanner(); e.preventDefault(); }
+    else if ((raw === ' ' || raw === 'Enter') && (e.repeat || _finishedTooSoon())) e.preventDefault();
+    return;
+  }
   // モーダル（ヘルプ／受け渡し／削除確認）表示中は Escape で閉じるだけ。
   // 裏のページ送りも止める（読書データ画面と同じ扱い）。
   // ⚠ preventDefault せずに return するので、Tab によるフォーカス移動と
@@ -9142,6 +9240,15 @@ function handleListKey(e, raw, k) {
   }
 }
 
+// 読みかけリストを著者で絞り込む（読了パネルの「リストで見る」・カードの著者名）。
+// 検索欄に名前を入れるだけ — 既存の検索が著者名も対象にしている
+function setRlAuthor(name) {
+  _rlQuery = name;
+  const inp = document.getElementById('rl-search');
+  if (inp) inp.value = name;
+  buildReadingList();
+}
+
 function clearRlFilters() {
   _rlQuery = '';
   const inp = document.getElementById('rl-search');
@@ -10723,12 +10830,158 @@ function closeBook() {
   _rlSyncSelection(true);
 }
 
+// ── 読了パネル（design_finished_next.md）──
+// 名前は旧「読了バナー」のまま（呼び出し元を触らないため）。中身は本文の上に重なるパネル。
+let _finishedOpen     = false;
+let _finishedOpenedAt = 0;
+let _fpListAuthor     = '';   // 「リストで見る」で絞り込む著者（蔵書に他の本がある最初の著者）
+// 末尾で Space/Enter・タップを連打していた勢いでパネルを閉じない猶予
+const FINISHED_GUARD_MS = 400;
 function showFinishedBanner() {
   _bookFinished = true;
   _rdMarkFinishedAt();
   if (state.bookKey) _rlJustFinished.add(state.bookKey);
-  const b = document.getElementById('finished-banner');
-  b.classList.add('show');
+  // ⚠ #settings-popover（z-index:500）の後ろに隠れないよう先に閉じる（showTtsHandoff と同じ理由）
+  const pop = document.getElementById('settings-popover');
+  if (pop && pop.classList.contains('show')) toggleSettings();
+  hideTapMenu();
+  hideTapGuide();
+  _finishedRender();
+  document.getElementById('finished-overlay').classList.add('show');
+  _finishedOpen = true;
+  _finishedOpenedAt = Date.now();
+  // 本文タップで来た場合フォーカスは iframe 内にあり、そのままでは Escape が届かない。
+  // 既定フォーカスは「この本に戻る」— 主ボタンに置くと連打の勢いで本を閉じてしまう
+  const stay = document.getElementById('finished-stay-btn');
+  try { stay.focus({ preventScroll: true }); } catch (e) { stay.focus(); }
+}
+function _finishedTooSoon() { return Date.now() - _finishedOpenedAt < FINISHED_GUARD_MS; }
+function _finishedButton(fn) { if (!_finishedTooSoon()) fn(); }
+function _finishedBackdropClick() { if (!_finishedTooSoon()) dismissFinishedBanner(); }
+
+function _fpLocalDate(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const p = n => String(n).padStart(2, '0');
+  return _formatPubDate(d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()));
+}
+function _authorSearchUrl(name) {
+  return 'https://www.google.com/search?q=' + encodeURIComponent('"' + name + '" 作品');
+}
+function _fpLink(href, label, cls) {
+  return '<a class="fp-btn' + (cls ? ' ' + cls : '') + '" href="' + esc(href)
+       + '" target="_blank" rel="noopener">' + esc(label) + ' ↗</a>';
+}
+// 完結済みの作品を収めるアーカイブ。続きの確認は無いので底本リンクだけ出す
+const _FP_ARCHIVE_SITES = ['青空文庫', 'プロジェクト杉田玄白', '結城浩翻訳の部屋'];
+
+// 「この作品」節: 底本がある本だけ。通信せず手元の情報で組み、いつの情報かを必ず添える
+function _finishedWorkHtml() {
+  const url = state.bookSourceUrl;
+  if (!url) return '';
+  const site = state.bookSourceSite || siteNameFromUrl(url);
+  if (_FP_ARCHIVE_SITES.indexOf(site) >= 0) {
+    const label = site === '青空文庫' ? t('help.readOnAozora') : t('help.readOnSite', {site});
+    return '<div class="fp-sec"><div class="fp-links">' + _fpLink(url, '📖 ' + label, 'fp-accent') + '</div></div>';
+  }
+  const serial  = state.bookSerial || '';
+  const done    = serial.indexOf('完結') >= 0;
+  const running = !!serial && !done;
+  const lines = [];
+  const st = [];
+  if (serial) st.push(done ? t('help.serialFinished') : t('help.serialRunning'));
+  const upd = _formatPubDate(state.bookSourceUpdated);
+  if (upd) st.push(t('help.sourceUpdated', {date: upd}));
+  if (st.length) lines.push('<p>' + esc(st.join(' ・ ')) + '</p>');
+  const v = _volumeInfo();
+  if (v.partial) lines.push('<p>' + esc(t('finished.siteHasMore', {total: v.total, n: v.eps})) + '</p>');
+  if (state.bookGeneratedAt) {
+    const days = Math.max(0, Math.floor((Date.now() - new Date(state.bookGeneratedAt).getTime()) / 86400000));
+    const date = _fpLocalDate(state.bookGeneratedAt);
+    const msg  = days === 0 ? t('finished.asOfToday', {date}) : t('finished.asOf', {date, days});
+    lines.push('<p class="fp-stale' + (days >= 30 ? ' fp-old' : '') + '">' + esc(msg) + '</p>');
+  }
+  // 連載中なら「続きを確認」、完結・不明なら「○○で読む」
+  const label = running ? t('finished.checkOnSite', {site}) : t('help.readOnSite', {site});
+  return '<div class="fp-sec"><h4>' + esc(t('finished.secWork')) + '</h4>' + lines.join('')
+       + '<div class="fp-links">' + _fpLink(url, '📖 ' + label, 'fp-accent')
+       + '<button class="fp-btn" onclick="finishedCopyUrl()">📋 ' + esc(t('finished.copyUrl')) + '</button></div>'
+       + '<div id="fp-copy-fallback"></div></div>';
+}
+// 「次の巻」節: シリーズ名があるときだけ（ISBN だけでは同じ本の書誌にしか辿れない）
+function _finishedSeriesHtml() {
+  const name = state.bookSeriesName;
+  if (!name) return '';
+  const author = (state.bookCreators && state.bookCreators[0]) || state.bookCreator || '';
+  const kw = (name + ' ' + author).trim();
+  return '<div class="fp-sec"><h4>' + esc(t('finished.secNext')) + '</h4>'
+       + '<p>' + esc(t('help.series', {name: state.bookSeries || name})) + '</p>'
+       + '<div class="fp-links">'
+       + _fpLink('https://ndlsearch.ndl.go.jp/search?cs=bib&keyword=' + encodeURIComponent(kw), '🔍 ' + t('finished.findNext'))
+       + '</div></div>';
+}
+// 「この著者の本」節: 蔵書の同じ著者（この本以外）と Web 検索
+function _finishedAuthorHtml(authors) {
+  _fpListAuthor = '';
+  if (!authors.length) return '';
+  const items = _rlCollect().filter(it => it.key !== state.bookKey);
+  let count = 0;
+  for (const name of authors) {
+    const k = _rlNorm(name);
+    const n = items.filter(it => _authorsOf(it).some(a => _rlNorm(a) === k)).length;
+    if (n && !_fpListAuthor) _fpListAuthor = name;
+    count = Math.max(count, n);
+  }
+  const out = [];
+  if (count) out.push('<p>' + esc(t('finished.ownedByAuthor', {n: count}))
+    + '<button class="fp-btn fp-inline" onclick="finishedShowAuthor()">' + esc(t('finished.showInList')) + '</button></p>');
+  // 著者が複数なら著者行の各 🔍 で足りる
+  if (authors.length === 1) out.push('<div class="fp-links">' + _fpLink(_authorSearchUrl(authors[0]), '🔍 ' + t('finished.searchWeb')) + '</div>');
+  return '<div class="fp-sec"><h4>' + esc(t('finished.secAuthor')) + '</h4>' + out.join('') + '</div>';
+}
+function _finishedRender() {
+  const body = document.getElementById('finished-body');
+  if (!body) return;
+  const authors = _authorsOf({creators: state.bookCreators, creator: state.bookCreator});
+  const cover = state.bookCoverDataUri
+    ? '<img class="fp-cover" src="' + esc(state.bookCoverDataUri) + '" alt="">' : '';
+  const names = authors.length
+    ? '<div class="fp-authors">' + authors.map(n => esc(n) + _authorSearchLink(n)).join('<span style="opacity:.4;margin:0 6px;">／</span>') + '</div>'
+    : '';
+  body.innerHTML =
+      '<h3 id="finished-title" class="fp-head">' + esc(t('finished.msg')) + '</h3>'
+    + '<div class="fp-book">' + cover + '<div style="min-width:0;"><div class="fp-title">' + esc(state.bookTitle) + '</div>' + names + '</div></div>'
+    + _finishedWorkHtml()
+    + _finishedSeriesHtml()
+    + _finishedAuthorHtml(authors);
+}
+// 底本 URL をクリップボードへ（novel_downloader に貼れば続きを取得できる）。
+// clipboard が無い・拒否されたら、選択済みの入力欄を出して手でコピーしてもらう
+function finishedCopyUrl() {
+  const url = state.bookSourceUrl;
+  if (!url) return;
+  const fallback = () => {
+    const box = document.getElementById('fp-copy-fallback');
+    if (!box) return;
+    box.innerHTML = '<input class="fp-copybox" type="text" readonly value="' + esc(url) + '">';
+    const inp = box.firstChild;
+    try { inp.focus({ preventScroll: true }); } catch (e) { inp.focus(); }
+    inp.select();
+    showToast(t('toast.urlCopyManual'));
+  };
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(() => showToast(t('toast.urlCopied')), fallback);
+      return;
+    }
+  } catch (e) {}
+  fallback();
+}
+// 「リストで見る」: 本を閉じてから、読みかけリストをその著者で絞り込む
+function finishedShowAuthor() {
+  const name = _fpListAuthor;   // closeBook で state が消える前に退避
+  closeBook();
+  if (name) setRlAuthor(name);
 }
 
 // 読了の記録。finishedAt は初読了日（最古を保持＝読書データのタイムライン用）、
@@ -11222,8 +11475,12 @@ function buildReadingData() {
 }
 
 function dismissFinishedBanner() {
-  const b = document.getElementById('finished-banner');
-  if (b) b.classList.remove('show');
+  const ov = document.getElementById('finished-overlay');
+  if (!ov || !ov.classList.contains('show')) return;
+  ov.classList.remove('show');
+  _finishedOpen = false;
+  // パネルのボタンにあったフォーカスを本文へ戻す（body に落ちると Space がブラウザのスクロールになる）
+  if (state.epub) reclaimKeyFocus();
 }
 
 async function extractCoverThumb(opfDoc) {
@@ -12118,6 +12375,7 @@ const DRIVE_RETRY_SKIP_SEL = [
   '#tts-bar',                            // 読み上げの操作（iOS は初回 speak にユーザー操作が要る）
   '[onclick*="openFilePicker"]', '[onclick*="resumeBook"]', '[onclick*=".click()"]',
   '[onclick*="toggleFullscreen"]', '[onclick*="ttsPlay"]', '[onclick*="Handoff"]',
+  '[onclick*="finishedCopyUrl"]',        // 読了パネルの URL コピー（clipboard もユーザー操作が要る）
 ].join(',');
 function driveRetryOnGesture(ev) {
   if (!_driveGestureRetry) return;
@@ -12907,7 +13165,7 @@ function esc(s) {
 }
 // 著者を Google 検索するリンク（"名前" 作品）
 function _authorSearchLink(name) {
-  return ' <a href="https://www.google.com/search?q=' + encodeURIComponent('"' + name + '" 作品')
+  return ' <a href="' + _authorSearchUrl(name)
        + '" target="_blank" rel="noopener" title="' + esc(t('help.searchAuthor'))
        + '" style="text-decoration:none;">🔍</a>';
 }

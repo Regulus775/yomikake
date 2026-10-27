@@ -203,6 +203,33 @@ def build_blank_web(path):
     z.close()
 
 
+def build_webnovel(path):
+    """novel_downloader 産を模した連載中の Web 小説（読了パネルの検証用）。
+    本文は ep*.xhtml（_countEpisodesInSpine が数える名前）で 3 話、サイト側の総話数は 5 話。
+    dcterms:modified は鮮度表示の基準（古い日付＝強調表示になる）。"""
+    z = zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED)
+    z.writestr('mimetype', 'application/epub+zip')
+    z.writestr('META-INF/container.xml', CONTAINER)
+    items, refs = [], []
+    for i in range(3):
+        body = ''.join('<p>第%d話の本文です。%02d</p>' % (i + 1, n) for n in range(20))
+        z.writestr('OEBPS/ep%03d.xhtml' % (i + 1),
+                   '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n'
+                   '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>第%d話</title></head>'
+                   '<body><h1>第%d話</h1>%s</body></html>' % (i + 1, i + 1, body))
+        items.append('<item id="e%d" href="ep%03d.xhtml" media-type="application/xhtml+xml"/>' % (i, i + 1))
+        refs.append('<itemref idref="e%d"/>' % i)
+    meta = ('<dc:source>https://kakuyomu.jp/works/1234567890</dc:source>'
+            '<meta property="dcterms:modified">2026-01-01T00:00:00Z</meta>'
+            '<meta property="nd:serialStatus">連載中</meta>'
+            '<meta property="nd:episodeCount">5</meta>'
+            '<meta property="nd:updated">2026-01-10</meta>'
+            '<meta property="belongs-to-collection" id="col">テストシリーズ</meta>'
+            '<meta refines="#col" property="group-position">2</meta>')
+    z.writestr('OEBPS/content.opf', opf('テスト用ウェブ小説', 'ウェブ作者', items, refs, meta))
+    z.close()
+
+
 def main():
     out = os.path.normpath(OUT_DIR)
     os.makedirs(out, exist_ok=True)
@@ -210,7 +237,8 @@ def main():
                      ('reflow2.epub', lambda p: build_reflow(p, 'テスト用リフロー2', 'べつの作者')),
                      ('fxl.epub', build_fxl),
                      ('blank.epub', build_blank),
-                     ('blankweb.epub', build_blank_web)):
+                     ('blankweb.epub', build_blank_web),
+                     ('webnovel.epub', build_webnovel)):
         p = os.path.join(out, name)
         fn(p)
         print('%s (%d bytes)' % (p, os.path.getsize(p)))

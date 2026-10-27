@@ -30,7 +30,7 @@ T('inset:0 で全面', cs.position === 'absolute');
   var z = parseInt(getComputedStyle(el).zIndex, 10);
   var above = [['page-overlay', 10]];
   var below = [['btn-prev', 20], ['mobile-progress', 25], ['fxl-region-pill', 28],
-               ['tts-bar', 40], ['tap-guide-overlay', 60], ['tap-menu', 70], ['finished-banner', 50]];
+               ['tts-bar', 40], ['tap-guide-overlay', 60], ['tap-menu', 70]];
   var ng = [];
   above.forEach(function (p) {
     var e = document.getElementById(p[0]); if (!e) return;

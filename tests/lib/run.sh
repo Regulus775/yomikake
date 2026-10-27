@@ -27,6 +27,7 @@ declare -A CASE_ENV=(
   [kosync]="RAF_SHIM=1 VTB=30000"
   [epub-sanitize]="RAF_SHIM=1 VTB=30000"
   [blank-lines]="RAF_SHIM=1 VTB=45000"
+  [finished-panel]="RAF_SHIM=1 VTB=40000"
 )
 declare -A CASE_FLAGS=(
   [e2e-reflow]="--allow-file-access-from-files"
@@ -44,6 +45,8 @@ declare -A CASE_FLAGS=(
   [blank-lines]="--allow-file-access-from-files --window-size=520,900"
   # sw.js を fetch して中身（multipart パーサ）を直接叩く
   [share-receive]="--allow-file-access-from-files"
+  # 読了パネルはスマホ幅（≤640px）でボトムシートになることも測る
+  [finished-panel]="--allow-file-access-from-files --window-size=520,900"
   # sw.js を fetch してフォント保存の判定関数を叩く
   [sw-fonts]="--allow-file-access-from-files"
 )
