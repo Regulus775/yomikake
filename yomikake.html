@@ -1642,6 +1642,14 @@ let _autoSaveBusy     = false; // 同時アップロード防止フラグ
 let _autoSaveDirty    = false; // デバウンス待ちの未アップロード変更があるか
 let _driveSyncBusy    = false; // サイレント同期pull の同時実行防止フラグ
 let _lastSyncPullAt   = 0;     // 最後にサイレント同期pull した時刻 (ms) — 連続復帰のスロットリング用
+// 起動（タブ復帰）以降に Drive を取り込んだか。false の間は送る前に必ず取り込む
+// （design_drive_sync_race.md）。Drive への保存はファイル全体の上書きなので、
+// 取り込む前に送ると別の端末で進めた位置を古い位置で消す
+let _drivePulled      = false;
+// 開いた本に読者がまだ触れていないか（取り込んだ先の位置へ黙って移ってよいか）の判定材料
+let _openPos          = null;  // {idx, ratio} — 開いたときの位置
+let _navSinceOpen     = false; // 開いてからページ送り・章移動をしたか
+let _posSeenSinceOpen = false; // 開いてから EPUB_POS が届いたか（届く前の _intraChapterRatio は 0）
 const AUTO_SAVE_INTERVAL = 60000; // 自動保存の最小間隔: 1分 (ms)
 const SYNC_PULL_THROTTLE = 15000; // 復帰時 pull の最小間隔 (ms)
 const AUTO_SAVE_RETRY_MIN = 30000; // 自動保存が失敗したときの再試行の最小間隔 (ms)
@@ -1912,6 +1920,7 @@ const I18N = {
     'toast.driveOffline':        'オフラインのため Google Drive に接続できません',
     'toast.driveOfflineDeferred':'オフラインです。Drive へのしおり保存は接続が戻ってから行います',
     'toast.driveSyncAvailable':  '☁️ 別の端末で読み進めた位置があります（タップで移動）',
+    'toast.driveSyncJumped':     '☁️ 別の端末で読み進めた第{n}章へ移動しました（タップで戻る）',
     'toast.syncFinished':        '☑ この本は別の端末で読み終えています（タップで最終ページへ）',
     'toast.driveDownloaded':     '☁️ Driveからしおりを読み込みました（{count}冊分）',
     'toast.driveJumped':         '☁️ Driveからしおりを読み込み、第{n}章に移動しました',
@@ -2395,6 +2404,7 @@ const I18N = {
     'toast.driveOffline':        'You are offline — cannot connect to Google Drive',
     'toast.driveOfflineDeferred':'You are offline. Bookmarks will be saved to Drive when the connection is back',
     'toast.driveSyncAvailable':  '☁️ A newer position from another device is available (tap to move)',
+    'toast.driveSyncJumped':     '☁️ Moved to chapter {n}, where you left off on another device (tap to go back)',
     'toast.syncFinished':        '☑ You finished this book on another device (tap for the last page)',
     'toast.driveDownloaded':     '☁️ Bookmarks loaded from Drive ({count} book(s))',
     'toast.driveJumped':         '☁️ Bookmarks loaded — jumped to chapter {n}',
@@ -2878,6 +2888,7 @@ const I18N = {
     'toast.driveOffline':        '目前離線，無法連線至 Google Drive',
     'toast.driveOfflineDeferred':'目前離線。書籤將於恢復連線後儲存至 Drive',
     'toast.driveSyncAvailable':  '☁️ 有來自其他裝置的較新閱讀位置（點擊跳轉）',
+    'toast.driveSyncJumped':     '☁️ 已移至在其他裝置讀到的第 {n} 章（點擊返回）',
     'toast.syncFinished':        '☑ 您已在其他裝置讀完本書（點擊前往最後一頁）',
     'toast.driveDownloaded':     '☁️ 已從 Drive 載入書籤（{count} 本書）',
     'toast.driveJumped':         '☁️ 已從 Drive 載入書籤，跳轉至第 {n} 章',
@@ -3361,6 +3372,7 @@ const I18N = {
     'toast.driveOffline':        '当前离线，无法连接 Google Drive',
     'toast.driveOfflineDeferred':'当前离线。书签将在恢复连接后保存至 Drive',
     'toast.driveSyncAvailable':  '☁️ 有来自其他设备的较新阅读位置（点击跳转）',
+    'toast.driveSyncJumped':     '☁️ 已移至在其他设备读到的第 {n} 章（点击返回）',
     'toast.syncFinished':        '☑ 您已在其他设备读完本书（点击前往最后一页）',
     'toast.driveDownloaded':     '☁️ 已从 Drive 加载书签（{count} 本书）',
     'toast.driveJumped':         '☁️ 已从 Drive 加载书签，跳转至第 {n} 章',
@@ -4125,6 +4137,9 @@ async function loadEpub(file, fileHandle = null) {
     document.getElementById('search-input').disabled = false;
     document.getElementById('search-btn').disabled = false;
     const saved = loadSavedPos();
+    _openPos = (saved && saved.spineIdx < state.spine.length)
+      ? { idx: saved.spineIdx || 0, ratio: typeof saved.ratio === 'number' ? saved.ratio : 0 } : { idx: 0, ratio: 0 };
+    _navSinceOpen = false; _posSeenSinceOpen = false;
     if (saved && saved.spineIdx > 0 && saved.spineIdx < state.spine.length) {
       _originalBookmark = {spineIdx: saved.spineIdx, ratio: typeof saved.ratio === 'number' ? saved.ratio : 0};
     }
@@ -6363,6 +6378,7 @@ function prevChapter() {
 
 function scrollPage(direction) {
   _rdRecordActivity();
+  _navSinceOpen = true;
   // フォーカス中のボタンから :focus-visible 枠を外す（キーボード移動時の残留防止）
   if (document.activeElement && document.activeElement.blur) {
     try { document.activeElement.blur(); } catch(e) {}
@@ -6417,6 +6433,7 @@ window.addEventListener('message', e => {
     if (!_isRendering) {
       _rdRecordActivity();
       _intraChapterRatio = e.data.ratio;
+      _posSeenSinceOpen = true;
       if (!_tts.active) savePos(e.data.ratio);   // TTS中は文単位しおりを無意識スクロールで上書きさせない
       koScheduleAutoPush();
       updatePageInfo();
@@ -11111,7 +11128,7 @@ function closeBook() {
   _fxlPendingHighlight = null;
   clearFxlSearchMarks();
   _intraChapterRatio = 0;
-  _originalBookmark = null; _jumpHistory = []; _bookFinished = false;
+  _originalBookmark = null; _jumpHistory = []; _bookFinished = false; _openPos = null;
   // UI リセット
   document.getElementById('content-iframe').src = 'about:blank';
   const imgA = document.getElementById('fxl-page-a');
@@ -12974,6 +12991,10 @@ function collectBookmarks() {
 // しおりを Drive に保存（Driveにしおりを保存ボタン）
 // 手動・自動保存共通のアップロードコア（UIに触れない、エラーはそのまま throw）
 async function driveUploadCore(token) {
+  // 起動・タブ復帰の後、まだ Drive を取り込んでいなければ先に取り込む。起動直後は
+  // 本を開いた savePos で自動保存が即座に走り、取り込みと競合して別の端末の位置を
+  // 古い位置で上書きしていた（実機で発生・design_drive_sync_race.md §1）
+  if (!_drivePulled) await _drivePullMerge(token);
   const payload = collectBookmarks();
   const count = Object.keys(payload.bookmarks).filter(k => k.startsWith('epub_pos_')).length;
   const body = JSON.stringify(payload, null, 2);
@@ -13339,54 +13360,100 @@ async function driveSyncPull(opts) {
   _driveSyncBusy = true;
   try {
     const token = await driveAuth();
-    const fileId = await driveFindFile(token);
-    if (!fileId) return;
-    const res = await fetch(
-      'https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media',
-      { headers: { Authorization: 'Bearer ' + token } }
-    );
-    if (res.status === 401) { _driveToken = null; state.driveFileId = null; return; }
-    if (!res.ok) return;
-    const json = await res.json();
-    if (!json.bookmarks || typeof json.bookmarks !== 'object') return;
-
-    const tomb = _rlApplyTombstones(json.purged);
-    for (const [key, val] of Object.entries(json.bookmarks)) {
-      if (!key.startsWith('epub_pos_')) continue; // last_book は同期で勝手に変えない（復帰先を保持）
-      let opened = 0;
-      try { const o = typeof val === 'string' ? JSON.parse(val) : val; opened = Date.parse(o && o.lastOpenedAt) || 0; } catch (e) {}
-      const tms = tomb.get(_rlHashKey(key));
-      if (tms !== undefined && tms >= opened) continue; // 墓標尊重（削除済みの復活防止）
-      try { _rdMergePosBest(key, val); } catch (e) { break; }
-    }
-    try { localStorage.removeItem('epub_consolidate_v1'); } catch (e) {}
-    consolidateBookmarks();
-    _rlCleanupLastBook();
-    _rdMergeBookStats(json.bookStats);
-    _rdMergeDays(json.readingDays);
-    _rdPruneOrphanStats();
-    _lastSyncPullAt = Date.now();
-
-    // 開いている本が Drive 側で進んでいたら「タップで移動」を提案（自動ジャンプしない）
-    if (state.epub && state.bookKey) {
-      let saved; try { saved = JSON.parse(localStorage.getItem(state.bookKey)); } catch (e) {}
-      if (saved && typeof saved.spineIdx === 'number') {
-        const newIdx = saved.spineIdx;
-        const newRatio = typeof saved.ratio === 'number' ? saved.ratio : 0;
-        const isAhead = newIdx > state.currentSpineIdx ||
-                        (newIdx === state.currentSpineIdx && newRatio > _intraChapterRatio + 0.01);
-        const isNotFinal = newIdx < state.spine.length - 1;
-        if (isAhead && isNotFinal) showSyncMoveToast(newIdx, newRatio);
-        else if (isAhead && !isNotFinal && !_bookFinished) showSyncFinishedToast();  // リモートが読了（§S4）
-      }
-    } else {
-      buildReadingList(); // ウェルカム画面なら読みかけリストを最新に
-    }
+    await _drivePullMerge(token);
   } catch (e) {
     // サイレント失敗（オフライン等）。次の機会に再試行。
   } finally {
     _driveSyncBusy = false;
   }
+}
+
+// Drive のしおりを取り込んで端末側へ進捗比較マージする（driveSyncPull と送信前の取り込みで共用）。
+// 失敗は throw する（送信側はそのまま失敗扱いにして再試行に回す）
+async function _drivePullMerge(token) {
+  const fileId = await driveFindFile(token);
+  if (!fileId) { _drivePulled = true; return; }   // Drive にまだ何も無い＝消すものが無い
+  const res = await fetch(
+    'https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media',
+    { headers: { Authorization: 'Bearer ' + token } }
+  );
+  if (res.status === 401) { _driveToken = null; state.driveFileId = null; throw new Error('401 Unauthorized — 再度ボタンをクリックしてください'); }
+  if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
+  const json = await res.json();
+  _drivePulled = true;
+  if (!json.bookmarks || typeof json.bookmarks !== 'object') return;
+  const tomb = _rlApplyTombstones(json.purged);
+  for (const [key, val] of Object.entries(json.bookmarks)) {
+    if (!key.startsWith('epub_pos_')) continue; // last_book は同期で勝手に変えない（復帰先を保持）
+    let opened = 0;
+    try { const o = typeof val === 'string' ? JSON.parse(val) : val; opened = Date.parse(o && o.lastOpenedAt) || 0; } catch (e) {}
+    const tms = tomb.get(_rlHashKey(key));
+    if (tms !== undefined && tms >= opened) continue; // 墓標尊重（削除済みの復活防止）
+    try { _rdMergePosBest(key, val); } catch (e) { break; }
+  }
+  try { localStorage.removeItem('epub_consolidate_v1'); } catch (e) {}
+  consolidateBookmarks();
+  _rlCleanupLastBook();
+  _rdMergeBookStats(json.bookStats);
+  _rdMergeDays(json.readingDays);
+  _rdPruneOrphanStats();
+  _lastSyncPullAt = Date.now();
+
+  // 開いている本が Drive 側で進んでいたら、まだ触れていなければその位置へ移る（取り消せる）。
+  // 読み始めていたら「タップで移動」を提案するだけ（読書中に不意に飛ばない）
+  if (state.epub && state.bookKey) {
+    let saved; try { saved = JSON.parse(localStorage.getItem(state.bookKey)); } catch (e) {}
+    if (saved && typeof saved.spineIdx === 'number') {
+      const newIdx = saved.spineIdx;
+      const newRatio = typeof saved.ratio === 'number' ? saved.ratio : 0;
+      // 開いた直後で EPUB_POS がまだ届いていなければ _intraChapterRatio は 0。開いた位置で比べる
+      // （0 で比べると、同じ位置なのに「Drive 側が先」と判定して空振りの移動をする）
+      const curRatio = (!_posSeenSinceOpen && _openPos && state.currentSpineIdx === _openPos.idx) ? _openPos.ratio : _intraChapterRatio;
+      const isAhead = newIdx > state.currentSpineIdx ||
+                      (newIdx === state.currentSpineIdx && newRatio > curRatio + 0.01);
+      const isNotFinal = newIdx < state.spine.length - 1;
+      if (isAhead && isNotFinal) {
+        if (_bookUntouched()) syncJumpUntouched(newIdx, newRatio);
+        else showSyncMoveToast(newIdx, newRatio);
+      }
+      else if (isAhead && !isNotFinal && !_bookFinished) showSyncFinishedToast();  // リモートが読了（§S4）
+    }
+  } else {
+    buildReadingList(); // ウェルカム画面なら読みかけリストを最新に
+  }
+}
+
+// 開いた本にまだ触れていないか: 開いてからページ送り・章移動をしておらず、位置も開いたときのまま。
+// EPUB_POS が届く前は _intraChapterRatio が 0 なので位置を比べない
+function _bookUntouched() {
+  if (!_openPos || _navSinceOpen) return false;
+  if (state.currentSpineIdx !== _openPos.idx) return false;
+  return !_posSeenSinceOpen || Math.abs(_intraChapterRatio - _openPos.ratio) < 0.02;
+}
+
+// 触れる前に取り込んだ先の位置へ移り、「タップで戻る」を出す（design_drive_sync_race.md §2）。
+// 移らずにいると、閉じるときの savePos が古い位置を書き、それが Drive に送られて先の位置が消える
+function syncJumpUntouched(idx, ratio) {
+  const back = { idx: state.currentSpineIdx, ratio: _posSeenSinceOpen ? _intraChapterRatio : _openPos.ratio };
+  pushJumpHistory();
+  renderPage(idx, ratio);
+  _openPos = { idx, ratio }; _posSeenSinceOpen = false;
+  const el = document.getElementById('toast');
+  _clearToastAction(el);
+  el.textContent = t('toast.driveSyncJumped', { n: idx + 1 });
+  el.classList.add('show', 'toast-action');
+  el.style.cursor = 'pointer';
+  clearTimeout(el._timer);
+  const handler = () => {
+    _clearToastAction(el);
+    el.classList.remove('show');
+    _navSinceOpen = true;   // 自分で選んだ位置。以後の取り込みでは黙って移らない
+    pushJumpHistory();
+    renderPage(back.idx, back.ratio);
+  };
+  el._actionHandler = handler;
+  el.addEventListener('click', handler);
+  el._timer = setTimeout(() => { _clearToastAction(el); el.classList.remove('show'); }, 8000);
 }
 
 function notifyStorageError() {
@@ -13818,7 +13885,11 @@ window.addEventListener('popstate', () => {
 // G2: 読書時間計測の確定フラッシュ。タブ非表示で即確定し、復帰時に離席時間を加算しないよう計測を一時停止
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { _rdFlush(); _rdLastActivityTs = 0; flushAutoSave(); koFlushAutoPush(); }
-  else driveSyncPull(); // タブ復帰時に Drive の最新しおりを取り込む（自動保存ON時のみ・スロットリングあり）
+  else {
+    // 離れていた間に別の端末が書いたかもしれない。次に送る前に必ず取り込み直す
+    _drivePulled = false;
+    driveSyncPull(); // タブ復帰時に Drive の最新しおりを取り込む（自動保存ON時のみ・スロットリングあり）
+  }
 });
 window.addEventListener('pagehide', () => { _rdFlush(); flushAutoSave(); koFlushAutoPush(); });
 
