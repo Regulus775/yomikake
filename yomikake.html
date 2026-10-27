@@ -5164,6 +5164,9 @@ let _rdTotalChars      = 0;         // Σ _rdSpineChars（算出完了で確定�
 let _rdCharsBookKey    = '';        // _rdSpineChars が帰属する bookKey（本切替で破棄・G2.1）
 let _rdCharsReady      = false;     // total 算出完了フラグ（G2.1）
 let _rlSearchTimer     = null;     // 読みかけリスト検索入力のデバウンスタイマー
+// このセッションで読み終えた本。リストへ戻ってもすぐには隠さない（読了パネルから続きの
+// 確認や同じ著者を辿れるように）。永続化しない＝リロードで従来どおり隠れる
+const _rlJustFinished  = new Set();
 let _mobileProgressTimer = null;  // モバイル進捗ピル 非表示タイマー
 let _sidebarTab        = 'toc';    // 'toc' | 'search' — サイドバーの現在タブ
 let _searching         = false;    // 検索実行中
@@ -9040,7 +9043,9 @@ function _rlNorm(s) {
 function _rlFilterSort(items) {
   // 隠すのは「いま末尾にいる本」。読了記録があっても位置が戻っていれば（再読中・
   // 続きが出た）既定リストに残す（design_finished_sync.md §4-4）
-  let arr = _rlPrefs.showFinished ? items : items.filter(it => !it.atEnd);
+  // 例外: このセッションで読み終えた本は残す（design_finished_next.md §4）
+  let arr = _rlPrefs.showFinished ? items
+          : items.filter(it => !it.atEnd || _rlJustFinished.has(it.key));
   const total = arr.length;
   if (_rlPrefs.filterReady)
     arr = arr.filter(it => _handleKeys.has(it.key) || _cachedKeys.has(it.key));
@@ -9496,6 +9501,8 @@ function doDeleteBook() {
   _rlPendingDeleteMode = null;
   closeModal(true);
   if (!bookKey) return;
+  // ⚠ 論理削除は位置を末尾に書くだけ（atEnd になる）。残しておくと削除したのに消えない
+  _rlJustFinished.delete(bookKey);
   if (mode === 'purge') _rlPurgeBook(bookKey);
   else markAsFinished(bookKey);
   // リストから消えるので IDB の ePub キャッシュも破棄
@@ -10967,6 +10974,7 @@ function closeBook() {
 function showFinishedBanner() {
   _bookFinished = true;
   _rdMarkFinishedAt();
+  if (state.bookKey) _rlJustFinished.add(state.bookKey);
   const b = document.getElementById('finished-banner');
   b.classList.add('show');
 }
