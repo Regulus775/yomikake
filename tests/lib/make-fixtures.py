@@ -407,8 +407,9 @@ def build_ebpaj_import(path):
     z.close()
 
 
-def build_noopf(path):
-    """OPF に dc:title も dc:creator も無い本（ファイル名 [作者] 題名.epub から補う・§7）。"""
+def build_noopf(path, empty_title=False):
+    """OPF に dc:title も dc:creator も無い本（ファイル名 [作者] 題名.epub から補う・§7）。
+    empty_title=True は dc:title が空の要素として在る本（旧キーの書名が空になる場合）。"""
     z = zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED)
     z.writestr('mimetype', 'application/epub+zip')
     z.writestr('META-INF/container.xml', CONTAINER)
@@ -421,7 +422,8 @@ def build_noopf(path):
                '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bid">'
                '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
                '<dc:identifier id="bid">urn:uuid:yomikake-test-noopf</dc:identifier>'
-               '<dc:title></dc:title><dc:language>ja</dc:language></metadata>'
+               + ('<dc:title></dc:title>' if empty_title else '') +
+               '<dc:language>ja</dc:language></metadata>'
                '<manifest><item id="c0" href="ch0.xhtml" media-type="application/xhtml+xml"/></manifest>'
                '<spine><itemref idref="c0"/></spine></package>')
     z.close()
@@ -443,7 +445,8 @@ def main():
                      ('ae3.epub', build_ae3),
                      ('notae3.epub', lambda p: build_ae3(p, ae3_ids=False)),
                      ('ebpaj-import.epub', build_ebpaj_import),
-                     ('noopf.epub', build_noopf)):
+                     ('noopf.epub', build_noopf),
+                     ('noopf-empty.epub', lambda p: build_noopf(p, empty_title=True))):
         p = os.path.join(out, name)
         fn(p)
         print('%s (%d bytes)' % (p, os.path.getsize(p)))

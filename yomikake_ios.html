@@ -4390,10 +4390,16 @@ async function loadEpub(file) {
     }
 
     const titleEl = opfDoc.querySelector('metadata > *|title, metadata > title');
-    const titleText = titleEl ? titleEl.textContent : file.name;
+    // OPF に書名・著者が無い（空も含む）ときだけファイル名 [作者名] 題名.epub から補う（design_aozoraepub3.md §7）。
+    // OPF に値があれば使わない —— AozoraEpub3 はファイル名に使えない文字を落とすので OPF のほうが正確
+    const fromName = parseAe3FileName(file && file.name);
+    const titleFromName = !(titleEl && titleEl.textContent.trim());
+    const titleText = titleFromName ? (fromName.title || file.name) : titleEl.textContent;
     state.bookTitle = titleText;
     state.bookCreators = [...opfDoc.querySelectorAll('metadata > *|creator, metadata > creator')]
       .map(el => el.textContent.trim()).filter(Boolean);
+    const creatorFromName = !state.bookCreators.length && !!fromName.creator;
+    if (creatorFromName) state.bookCreators = [fromName.creator];
     state.bookCreator = state.bookCreators.join('・');
     const langEl = opfDoc.querySelector('metadata > *|language, metadata > language');
     state.bookLang = (langEl && langEl.textContent.trim().slice(0,2).toLowerCase()) || 'ja';
@@ -4453,6 +4459,12 @@ async function loadEpub(file) {
     // 旧形式エントリ (epub_pos_{title}_{spineCount}) からのワンショット移行
     if (!localStorage.getItem(state.bookKey)) {
       migrateLegacyBookmark(titleText, state.bookCreator, state.bookKey);
+    }
+    // ファイル名から補った本は、補う前のキー（書名＝拡張子つきのファイル名・著者なし）でしおりを持っている。
+    // ⚠ dc:title が空だった本の旧キーは書名が空で、同じ形の本どうしで衝突しうるので移さない
+    if ((titleFromName || creatorFromName) && !localStorage.getItem(state.bookKey)) {
+      const oldTitle = titleFromName ? (titleEl ? '' : file.name) : titleText;
+      if (oldTitle) _rekeyBookmark(makeBookKey(oldTitle, creatorFromName ? '' : state.bookCreator), state.bookKey);
     }
     // 本ごとの表示設定を最初の描画より前に当てる（開いてから切り替わるチラつきを避ける）
     applyBookPrefs(state.bookKey);
@@ -12365,6 +12377,37 @@ function consolidateBookmarks() {
     if (lbHit) { try { localStorage.setItem('epub_last_book', JSON.stringify({title, bookKey: newKey})); } catch(e) {} }
   }
   try { localStorage.setItem('epub_consolidate_v1', '1'); } catch(e) {}
+}
+// ファイル名 [作者名] 題名.epub（AozoraEpub3 の既定。kepub は .kepub.epub）から書名・著者を取り出す。
+// [ ] が無ければ全体が書名。全角の［ ］は対象外（design_aozoraepub3.md §7-1）
+function parseAe3FileName(name) {
+  const s = String(name || '').replace(/(\.kepub)?\.epub$|\.kepub$/i, '').trim();
+  const m = /^\[([^\]]+)\]\s*(.+)$/.exec(s);
+  return m ? { creator: m[1].trim(), title: m[2].trim() } : { creator: '', title: s };
+}
+// しおりを別のキーへ移す（書名・著者の決め方が変わった本の引き継ぎ・design_aozoraepub3.md §7-2）。
+// 移すのはしおり・epub_last_book・読書データ・本ごとの表示設定。古いキーの ePub キャッシュは消す
+// （開いた直後に新しいキーで書き直されるので、残すと 1 冊ぶん漏れる）。KOReader の対応表は中身から計算し直される
+function _rekeyBookmark(oldKey, newKey) {
+  if (!oldKey || !newKey || oldKey === newKey) return false;
+  let val = null;
+  try { val = localStorage.getItem(oldKey); } catch(e) {}
+  if (!val) return false;
+  try { localStorage.setItem(newKey, val); } catch(e) { notifyStorageError(); return false; }
+  _rdRekeyStats(oldKey, newKey);
+  try { localStorage.removeItem(oldKey); } catch(e) {}
+  try {
+    const lb = JSON.parse(localStorage.getItem('epub_last_book'));
+    if (lb && lb.bookKey === oldKey) localStorage.setItem('epub_last_book', JSON.stringify({ ...lb, bookKey: newKey }));
+  } catch(e) {}
+  const bp = _bpLoad();
+  if (hasOwnKey(bp.books, oldKey)) {
+    if (!hasOwnKey(bp.books, newKey)) bp.books[newKey] = bp.books[oldKey];
+    delete bp.books[oldKey];
+    _bpSave(bp);
+  }
+  if (_cachedKeys.has(oldKey)) { _cachedKeys.delete(oldKey); _idbDelete(oldKey); }
+  return true;
 }
 function migrateLegacyBookmark(title, creator, newKey) {
   let bestKey = null, bestVal = null, bestTime = -1;

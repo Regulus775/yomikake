@@ -169,6 +169,47 @@ var CHAIN = Promise.resolve()
   return wait(900);
 })
 
+// ══ 14: ファイル名 [作者名] 題名.epub から補う ═══════════════════════
+.then(function () {
+  function eq(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+  T('14: [作者] 題名.epub', eq(parseAe3FileName('[夏目漱石] 坊っちゃん.epub'), {creator: '夏目漱石', title: '坊っちゃん'}));
+  T('14: .kepub.epub も落とす', eq(parseAe3FileName('[伏瀬] 転生したらスライムだった件.kepub.epub'), {creator: '伏瀬', title: '転生したらスライムだった件'}));
+  T('14: 空白なしでも分ける', eq(parseAe3FileName('[作者]題名.epub'), {creator: '作者', title: '題名'}));
+  T('14: [ ] が無ければ全体が書名', eq(parseAe3FileName('ただの本.epub'), {creator: '', title: 'ただの本'}));
+  T('14: 全角の［ ］は対象外', eq(parseAe3FileName('［作者］題名.epub'), {creator: '', title: '［作者］題名'}));
+  T('14: 書名が無ければ分けない', eq(parseAe3FileName('[作者].epub'), {creator: '', title: '[作者]'}));
+  // 補う前のキー（書名＝拡張子つきのファイル名・著者なし）で読みかけていた本
+  localStorage.clear();
+  var oldKey = makeBookKey('[テスト作者] 書名のない本.epub', '');
+  localStorage.setItem(oldKey, JSON.stringify({spineIdx: 0, ratio: 0, lastOpenedAt: '2026-01-01T00:00:00Z', creator: '', spineCount: 1, __probe: 'old'}));
+  localStorage.setItem('epub_last_book', JSON.stringify({title: '[テスト作者] 書名のない本.epub', bookKey: oldKey}));
+  var bp = {v: 1, books: {}}; bp.books[oldKey] = {fontSize: 140, t: Date.now()};
+  localStorage.setItem('epub_book_prefs', JSON.stringify(bp));
+  window.__oldKey = oldKey;
+  return openFixture('noopf.epub', '[テスト作者] 書名のない本.epub');
+})
+.then(function () {
+  T('14: OPF に無い書名をファイル名から補う', state.bookTitle === '書名のない本', state.bookTitle);
+  T('14: OPF に無い著者をファイル名から補う', state.bookCreator === 'テスト作者', state.bookCreator);
+  T('14: キーは補った書名と著者', state.bookKey === makeBookKey('書名のない本', 'テスト作者'), state.bookKey);
+  var v = JSON.parse(localStorage.getItem(state.bookKey) || '{}');
+  // 位置は 1 画面の章なので開いた直後に実測で書き直される。引き継いだ印として値の中身（__probe）を見る
+  T('14: 補う前のキーのしおりを引き継ぐ', v.__probe === 'old', JSON.stringify(v).slice(0, 80));
+  T('14: 古いキーは消える', localStorage.getItem(window.__oldKey) === null);
+  T('14: epub_last_book も新しいキー', JSON.parse(localStorage.getItem('epub_last_book')).bookKey === state.bookKey);
+  T('14: 本ごとの表示設定も引き継ぐ', (_bpGet(state.bookKey) || {}).fontSize === 140 && !_bpGet(window.__oldKey));
+  return openFixture('noopf-empty.epub', '[テスト作者] 空の書名.epub');
+})
+.then(function () {
+  T('14: dc:title が空でもファイル名から補う', state.bookTitle === '空の書名' && state.bookCreator === 'テスト作者',
+    state.bookTitle + ' / ' + state.bookCreator);
+  return openFixture('ae3.epub', '[別の作者] 別の書名.epub');
+})
+.then(function () {
+  T('14: OPF に値があればファイル名は使わない', state.bookTitle === 'テスト青空' && state.bookCreator === '青空作者',
+    state.bookTitle + ' / ' + state.bookCreator);
+})
+
 // ══ 後片付け ═════════════════════════════════════════════════════
 .then(function () {
   closeBook();
