@@ -31,6 +31,7 @@ declare -A CASE_ENV=(
   [drive-sync-race]="RAF_SHIM=1 VTB=40000"
   [series-next]="RAF_SHIM=1 VTB=40000"
   [update-check]="RAF_SHIM=1 VTB=40000"
+  [aozoraepub3]="RAF_SHIM=1 VTB=60000"
 )
 declare -A CASE_FLAGS=(
   [e2e-reflow]="--allow-file-access-from-files"
@@ -55,6 +56,7 @@ declare -A CASE_FLAGS=(
   # sw.js を fetch してフォント保存の判定関数を叩く
   [sw-fonts]="--allow-file-access-from-files"
   [update-check]="--allow-file-access-from-files"
+  [aozoraepub3]="--allow-file-access-from-files"
 )
 
 pass=0; fail=0; failed_lines=()

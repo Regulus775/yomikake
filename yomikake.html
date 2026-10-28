@@ -4405,7 +4405,41 @@ async function toDataUri(absPath) {
   return 'data:' + mime + ';base64,' + b64;
 }
 
-async function resolveCssText(css, cssDir) {
+// CSS の @import を参照先の中身で置き換える（design_aozoraepub3.md §3）。
+// 本文は srcdoc＋<base href="about:blank"> なので、ePub 内の相対パスの @import はそのままでは読まれない。
+// 電書協形式の ePub は book-style.css から @import "style-standard.css"; のように読むのが定型で、
+// これを解決していなかった頃は縦中横・傍点・字下げの指定が丸ごと落ちていた。
+// ⚠ url() の置き換え（下）より先に行う。後にすると @import url(x) が先に data URI になり、
+//    その中の @import と url() が参照元のディレクトリで解決できなくなる
+const CSS_IMPORT_MAX_DEPTH = 5;
+const CSS_IMPORT_RE = /@import\s+(?:url\(\s*(['"]?)([^'")\s]+)\1\s*\)|(['"])([^'"]+)\3)\s*([^;]*);/gi;
+async function expandCssImports(css, cssDir, seen, depth) {
+  // コメントの中の @import を拾わないよう先にコメントを消す（電書協の book-style.css は説明文に書いている）
+  css = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const hits = [];
+  let m;
+  CSS_IMPORT_RE.lastIndex = 0;
+  while ((m = CSS_IMPORT_RE.exec(css)) !== null) hits.push({full: m[0], href: (m[2] || m[4] || '').trim(), media: (m[5] || '').trim()});
+  for (const h of hits) {
+    let rep = '';
+    if (/^https?:/i.test(h.href)) continue;   // 外部は触らない（CSP で止まるか、そのまま読まれる）
+    const absPath = resolvePath(cssDir, h.href);
+    const f = depth < CSS_IMPORT_MAX_DEPTH && !seen.has(absPath) && state.epub && state.epub.file(absPath);
+    if (f) {
+      const dir = absPath.includes('/') ? absPath.slice(0, absPath.lastIndexOf('/') + 1) : '';
+      const next = new Set(seen); next.add(absPath);
+      let inner = await f.async('text');
+      inner = (await resolveCssText(inner, dir, next, depth + 1)).replace(/@charset\s+[^;]*;/gi, '');
+      rep = h.media ? '@media ' + h.media + '{\n' + inner + '\n}' : inner;
+    }
+    // 無いファイル・循環・深すぎる入れ子は行ごと消す
+    css = css.split(h.full).join(rep);
+  }
+  return css;
+}
+
+async function resolveCssText(css, cssDir, seen, depth) {
+  if (css.indexOf('@import') >= 0) css = await expandCssImports(css, cssDir, seen || new Set(), depth || 0);
   // url('...') or url(...)
   const re = /url\(\s*(['"]?)([^'"\)\s]+)\1\s*\)/g;
   const hits = [];

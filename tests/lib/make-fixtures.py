@@ -6,6 +6,7 @@
 - reflow.epub  : リフロー本（4章・ルビと縦中横・SVG 表紙を含む）
 - reflow2.epub : もう1冊のリフロー本（書名・著者違い＝bookKey が別になる）
 - fxl.epub     : 固定レイアウト本（4ページ・rtl・pre-paginated）
+- ae3.epub ほか: AozoraEpub3 の形・電書協の @import・OPF の無い本（design_aozoraepub3.md §8-1）
 
 実書籍に依存せずに E2E を回せるようにするのが目的。個人の蔵書（temp_sample/）は
 gitignore されているため、クローン直後でもテストが通る状態を保つ。
@@ -264,6 +265,168 @@ def build_grow(path, n_eps, toc_at_end=False):
     z.close()
 
 
+# ── AozoraEpub3 の形を真似た本（design_aozoraepub3.md §8-1） ──────────────
+# CSS は実物（AozoraEpub3 の vertical*.css）から検査に要る規則だけを抜粋した。書き方は実物のまま
+# （縦書き前提の物理プロパティ・古い縦中横・色の直書き）
+AE3_TEXT_CSS = ('@charset "utf-8";\nhtml{writing-mode:vertical-rl;-webkit-writing-mode:vertical-rl;}\n'
+                'body{margin:0;padding:0;color:#000;line-height:1.75;}\n')
+AE3_FONT_CSS = '@charset "utf-8";\nbody{font-family:serif;}\n.gtc,.b{font-family:sans-serif;}\n'
+AE3_MIDDLE_CSS = '@charset "utf-8";\ntable.middle td{vertical-align:middle;}\n'
+AE3_IMAGE_CSS = '@charset "utf-8";\nhtml{writing-mode:horizontal-tb;}\n'
+AE3_CSS = '\n'.join([
+    '@charset "utf-8";', '@namespace "http://www.w3.org/1999/xhtml";',
+    'p{text-align:justify;margin:0;}',
+    ':link{color:#00C;background:transparent;}', ':visited{color:#609;background:transparent;}',
+    '.gaiji{display:inline-block;vertical-align:middle;}',
+    '.gaiji img{width:1em;position:relative;left:-.2em;}',
+    '.border{border:1px solid #000;margin:0.25em;padding:0.25em;display:inline-block;}',
+    'span.sesame{text-emphasis-style:sesame;-webkit-text-emphasis-style:sesame;}',
+    'span.underline,span.double_underline,span.dotted_underline,span.dashed_underline,span.wave_underline'
+    '{border-right-width:1px;padding-right:1px;}',
+    'span.underline{border-right-style:solid;}',
+    'span.double_underline{border-right-width:3px;border-right-style:double;}',
+    'span.left_underline{border-left-style:solid;padding-left:1px;border-left-width:1px;}',
+    '.font3,.chap2{font-size:130%;}', '.kogaki{font-size:70%;}',
+    '.tcy span{text-combine:horizontal;-webkit-text-combine:horizontal;-epub-text-combine:horizontal;}',
+    'span.wrc{display:inline-block;font-size:.6em;line-height:1em;position:relative;left:-.4em;}',
+    'div.pt2{margin-top:2em;}', 'div.pt8{margin-top:8em;}', 'div.pb2{margin-bottom:2em;}',
+    'div.btm,div.btm p{text-align:right;}', 'div.jzm10{max-height:10em;}',
+    'span.fullsp{padding-top:.5em;}',
+    '.introduction{float:right;font-size:83%;border-top:3px solid #aaa;color:#555;margin:.25em;'
+    'margin-right:1em;padding:1em .5em;display:inline-block;height:70%;}',
+    '.postscript{float:right;font-size:83%;border-top:3px solid #888;color:#222;margin:.25em;'
+    'margin-right:2em;padding:1em .5em;display:inline-block;height:70%;}',
+    'div.clear{clear:both;}',
+])
+
+
+def _ae3_page(title, links, body):
+    return ('<?xml version="1.0" encoding="utf-8"?>\n<!DOCTYPE html>\n'
+            '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ja" lang="ja"><head>%s<title>%s</title></head>'
+            '<body>%s</body></html>'
+            % (''.join('<link rel="stylesheet" type="text/css" href="../css/%s"/>' % l for l in links), title, body))
+
+
+def build_ae3(path, ae3_ids=True):
+    """AozoraEpub3 で青空文庫のテキストを変換した本の形（扉 → 目次〔spine〕→ 本文 1 ファイル → 奥付）。
+    ae3_ids=False は同じ中身で manifest の id だけ違う本（判定が外れることの対照）。"""
+    z = zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED)
+    z.writestr('mimetype', 'application/epub+zip')
+    z.writestr('META-INF/container.xml', CONTAINER.replace('OEBPS/content.opf', 'OPS/package.opf'))
+    for name, css in (('vertical_text.css', AE3_TEXT_CSS), ('vertical_font.css', AE3_FONT_CSS),
+                      ('vertical_middle.css', AE3_MIDDLE_CSS), ('vertical_image.css', AE3_IMAGE_CSS),
+                      ('vertical.css', AE3_CSS)):
+        z.writestr('OPS/css/' + name, css)
+    z.writestr('OPS/images/gaiji-1.png', png(16, 16, (0, 0, 0)))
+    links = ['vertical_font.css', 'vertical_text.css', 'vertical.css']
+    z.writestr('OPS/xhtml/title.xhtml', _ae3_page('テスト青空', ['vertical_font.css', 'vertical_middle.css', 'vertical.css'],
+               '<table class="middle"><tr><td><div class="title">テスト青空</div>'
+               '<div class="creator">青空作者</div></td></tr></table>'))
+    z.writestr('OPS/xhtml/nav.xhtml',
+               '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n'
+               '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja">'
+               '<head><title>テスト青空</title></head><body><nav epub:type="toc" id="toc"><h1>目　次</h1><ol>'
+               '<li class="chapter"><a href="0001.xhtml#kobo.1.1">一</a></li>'
+               '<li class="chapter"><a href="0001.xhtml#kobo.2.1">二</a></li></ol></nav></body></html>')
+    L = '長めの文を置いて折り返しを起こす。' * 4
+    body = (
+        '<div class="introduction" id="intro">前書き：作者からのお知らせ</div><div class="clear"></div>'
+        '<div id="kobo.1.1" class="pt8"><div class="chap2">一</div></div><p><br/></p>'
+        '<p>　吾輩は<span class="sesame">猫</span>である。名前は<span class="underline" id="ul">まだ無い</span>。'
+        '<span class="tcy" id="tcy"><span>37</span></span>歳<span class="tcy"><span>!?</span></span>'
+        '<span class="fullsp" id="fullsp"> </span>次の文。</p>'
+        '<p>　左傍線<span class="left_underline" id="lul">ここ</span>、二重傍線<span class="double_underline" id="dul">ここ</span>、'
+        '割注<span class="wrc" id="wrc">割注の中身<br/>二行目</span>、外字<span class="gaiji"><img id="gaiji" src="../images/gaiji-1.png" alt="※"/></span>。</p>'
+        '<div class="pt2" id="pt2"><p>ここから二字下げの段落。' + L + '</p></div>'
+        '<div class="jzm10" id="jzm"><p>十字詰めの段落。ここは十字で折り返すはず。十字で折り返すはず。</p></div>'
+        '<div class="btm pb2" id="pb2"><p>地から二字上げ</p></div>'
+        '<p><span class="border" id="border">罫囲み</span>　<a href="#kobo.2.1" id="link">リンク</a></p>'
+        '<div id="kobo.2.1" class="pt8"><div class="chap2">二</div></div>'
+        '<p>　' + L + '</p>'
+        '<div class="postscript" id="post">後書き：あとがき</div>'
+    )
+    z.writestr('OPS/xhtml/0001.xhtml', _ae3_page('テスト青空', links, body))
+    z.writestr('OPS/xhtml/0002.xhtml', _ae3_page('テスト青空', links,
+               '<p>底本：「テスト全集<span class="tcy"><span>1</span></span>」テスト文庫、テスト書房</p>'
+               '<p>　　　1987（昭和<span class="tcy"><span>62</span></span>）年9月29日第1刷発行</p>'
+               '<p>底本の親本：「テスト全集」テスト書房</p>'
+               '<p>　　　1971（昭和46）年4月5日初版</p>'
+               '<p>入力：テスト入力者</p><p>校正：テスト校正者</p>'
+               '<p>1999年9月17日公開</p>'
+               '<p>青空文庫作成ファイル：</p>'
+               '<p>このファイルは、インターネットの図書館、青空文庫（http://www.aozora.gr.jp/）で作られました。</p>'))
+    ids = (('vertical', 'v_font', 'v_text', 'v_middle', 'v_image') if ae3_ids
+           else ('c1', 'c2', 'c3', 'c4', 'c5'))
+    css_names = ('vertical.css', 'vertical_font.css', 'vertical_text.css', 'vertical_middle.css', 'vertical_image.css')
+    items = ['<item id="%s" href="css/%s" media-type="text/css"/>' % (i, n) for i, n in zip(ids, css_names)]
+    items += ['<item id="nav" properties="nav" href="xhtml/nav.xhtml" media-type="application/xhtml+xml"/>',
+              '<item id="title-page" href="xhtml/title.xhtml" media-type="application/xhtml+xml"/>',
+              '<item id="sec0001" href="xhtml/0001.xhtml" media-type="application/xhtml+xml"/>',
+              '<item id="sec0002" href="xhtml/0002.xhtml" media-type="application/xhtml+xml"/>',
+              '<item id="g1" href="images/gaiji-1.png" media-type="image/png"/>']
+    refs = ['<itemref idref="%s" linear="yes"/>' % r for r in ('title-page', 'nav', 'sec0001', 'sec0002')]
+    title = 'テスト青空' if ae3_ids else 'テスト青空（対照）'
+    z.writestr('OPS/package.opf', opf(title, '青空作者', items, refs))
+    z.close()
+
+
+def build_ebpaj_import(path):
+    """電書協形式のように book-style.css が @import で CSS を読む本（AozoraEpub3 ではない）。
+    入れ子・メディア指定・ZIP に無いファイル・循環・コメントの中の @import を混ぜてある。"""
+    z = zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED)
+    z.writestr('mimetype', 'application/epub+zip')
+    z.writestr('META-INF/container.xml', CONTAINER.replace('OEBPS/content.opf', 'item/standard.opf'))
+    z.writestr('item/image/x.png', png(4, 4, (200, 30, 30)))
+    st = 'item/style/'
+    z.writestr(st + 'book-style.css',
+               '@charset "UTF-8";\n'
+               '/* ・外部 CSS の import\n@import "evil.css";\n*/\n'
+               '@import "a.css";\n'
+               "@import url('b.css') screen;\n"
+               '@import "missing.css";\n'
+               '@import "c.css";\n'
+               '.own{text-decoration:underline;}\n')
+    z.writestr(st + 'a.css', '@charset "UTF-8";\n@import "sub/e.css";\n'
+               '.upr{text-orientation:upright;}\n.tcy{text-combine-upright:all;}\n')
+    z.writestr(st + 'sub/e.css', '.bg{background-image:url(../../image/x.png);}\n')
+    z.writestr(st + 'b.css', '.scr{font-style:italic;}\n')
+    z.writestr(st + 'c.css', '@import "d.css";\n.cc{font-weight:bold;}\n')
+    z.writestr(st + 'd.css', '@import "c.css";\n.dd{text-decoration:line-through;}\n')
+    z.writestr('item/xhtml/p-001.xhtml',
+               '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n'
+               '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ja" class="vrtl"><head>'
+               '<link rel="stylesheet" type="text/css" href="../style/book-style.css"/><title>電書協</title></head>'
+               '<body><div class="main"><p>縦中横<span class="tcy" id="tcy">12</span>と正立<span class="upr" id="upr">ABC</span>。</p>'
+               '<p class="bg" id="bg">背景画像</p><p class="scr" id="scr">メディア指定</p>'
+               '<p class="cc" id="cc">循環 c</p><p class="dd" id="dd">循環 d</p><p class="own" id="own">自分の規則</p>'
+               '<p class="ev" id="ev">evil</p></div></body></html>')
+    items = ['<item id="p1" href="xhtml/p-001.xhtml" media-type="application/xhtml+xml"/>',
+             '<item id="bs" href="style/book-style.css" media-type="text/css"/>',
+             '<item id="img" href="image/x.png" media-type="image/png"/>']
+    z.writestr('item/standard.opf', opf('テスト電書協', 'テスト作者', items, ['<itemref idref="p1"/>']))
+    z.close()
+
+
+def build_noopf(path):
+    """OPF に dc:title も dc:creator も無い本（ファイル名 [作者] 題名.epub から補う・§7）。"""
+    z = zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED)
+    z.writestr('mimetype', 'application/epub+zip')
+    z.writestr('META-INF/container.xml', CONTAINER)
+    z.writestr('OEBPS/ch0.xhtml',
+               '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n'
+               '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>本文</title></head>'
+               '<body><p>書名も著者もない本の本文。</p></body></html>')
+    z.writestr('OEBPS/content.opf',
+               '<?xml version="1.0" encoding="UTF-8"?>\n'
+               '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bid">'
+               '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
+               '<dc:identifier id="bid">urn:uuid:yomikake-test-noopf</dc:identifier>'
+               '<dc:title></dc:title><dc:language>ja</dc:language></metadata>'
+               '<manifest><item id="c0" href="ch0.xhtml" media-type="application/xhtml+xml"/></manifest>'
+               '<spine><itemref idref="c0"/></spine></package>')
+    z.close()
+
+
 def main():
     out = os.path.normpath(OUT_DIR)
     os.makedirs(out, exist_ok=True)
@@ -276,7 +439,11 @@ def main():
                      ('grow3.epub', lambda p: build_grow(p, 3)),
                      ('grow5.epub', lambda p: build_grow(p, 5)),
                      ('growtoc3.epub', lambda p: build_grow(p, 3, toc_at_end=True)),
-                     ('growtoc5.epub', lambda p: build_grow(p, 5, toc_at_end=True))):
+                     ('growtoc5.epub', lambda p: build_grow(p, 5, toc_at_end=True)),
+                     ('ae3.epub', build_ae3),
+                     ('notae3.epub', lambda p: build_ae3(p, ae3_ids=False)),
+                     ('ebpaj-import.epub', build_ebpaj_import),
+                     ('noopf.epub', build_noopf)):
         p = os.path.join(out, name)
         fn(p)
         print('%s (%d bytes)' % (p, os.path.getsize(p)))
