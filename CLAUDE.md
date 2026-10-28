@@ -145,15 +145,15 @@ Most features exist in both files. As a rule:
 
 **AozoraEpub3 の本・CSS の `@import`（2026-10-28 実装・第 1 弾）** (`expandCssImports`, `CSS_IMPORT_RE`, `CSS_IMPORT_MAX_DEPTH`, `resolveCssText(css, cssDir, seen, depth)`, `state.bookOrigin`, `state.bookAozoraSource`, `_aozoraColophon`, `aozoraFixCss`, `isDarkPaper`, `AE3_UNDERLINES`, `parseAe3FileName`, `_rekeyBookmark` — 設計書 `design_aozoraepub3.md`、検査ページ `tests/probe/aozoraepub3-css.html`)。
 
-- **`@import "x.css"` を展開する（全ての本）。** 本文は srcdoc＋`<base href="about:blank">` なので相対パスの `@import` は読まれない。**電書協形式の ePub は `book-style.css` から `@import` するのが定型**で、それまで縦中横・傍点・字下げが丸ごと落ちていた（手元の商業本 5 冊）。⚠ **`url()` の置き換えより先に展開する**（後だと `@import url(x)` が先に data URI になって入れ子が解けない）。コメントは先に消す（電書協はコメントに `@import` を書く）。無い・循環・5 段超は行ごと消す
+- **`@import "x.css"` を展開する（全ての本）。** 本文は srcdoc＋`<base href="about:blank">` なので相対パスの `@import` は読まれない。**電書協形式の ePub は `book-style.css` から `@import` するのが定型**で、それまで縦中横・傍点・字下げが丸ごと落ちていた（手元の商業本 5 冊）。⚠ **`url()` の置き換えより先に展開する**（後だと `@import url(x)` が先に data URI になって入れ子が解けない）。コメントは先に消す（電書協はコメントに `@import` を書く）。無い・循環・5 段超は行ごと消す。**条件は `@media` に一括りにしない**（`layer()` / `supports()` を `@media` に入れると不正なクエリで中身ごと無視される・`_cssImportWrap`）。**展開しない `@import`（スキームつき・`//host`）は先頭へ集める**（規則の後ろに残ると無効）。`<link>` からは読み込み元のパスを `seen` に入れて渡す
 - **生成元の判定は manifest の id `v_text` と `v_font`**（AozoraEpub3 はテンプレートが違っても必ず持つ。手元の 43 冊で誤判定 0）。**A2〜A4 の補正はクラス名で書き換えるので、この判定で AozoraEpub3 の本に限る**（`pt2` や `border` は他の ePub でも使われうる）
 - **縦中横（A2）**: AozoraEpub3 は廃止済みの `.tcy span { text-combine: horizontal }` しか書かない。**Firefox は解さず全部横倒しだった**（Chrome・Safari は `-webkit-text-combine` で効いている。6 環境で実測）。`.tcy>span` に `text-combine-upright:all` を補う
 - **横書きモード（A3）**: AozoraEpub3 の CSS は字下げ（`pt`=`margin-top`）・字上げ（`pb`）・字詰め（`jzm`=`max-height`）・傍線（`border-right`）を**縦書き前提の物理プロパティ**で書く。「横書き」モードでは行頭・行末の論理プロパティに置き換える。**縦書き・出版社の指定モードでは何もしない**
 - **暗いテーマ（A4）**: テーマは `html,body` の色しか変えないので、ePub が直書きしたリンク（`#00C`）・罫囲み（`#000`）・後書き（`#222`）が沈む。**青空文庫の本は目次ページが spine に入るので 2 ページ目が読めなかった**。紙の相対輝度 < 0.2（`isDarkPaper`・今は `dark` と `hoshi`）のときだけ文字色に揃える。明るいテーマでは出版元の色のまま
 - **青空文庫の奥付**: 最後の spine に「青空文庫作成ファイル」があれば `bookSourceSite='青空文庫'`、「底本：」とそれに続く字下げの段落を `bookAozoraSource` に（ヘルプに文字で出す）。**図書カードの URL は ePub に無いのでリンクは作らない**
-- **ファイル名（14）**: OPF に書名・著者が無いとき（空も含む）だけ `[作者名] 題名.epub` から補う。**OPF に値があれば使わない**（AozoraEpub3 はファイル名に使えない文字を落とす）。補う前のキーのしおりは `_rekeyBookmark` で移す。⚠ `dc:title` が空の要素だった本の旧キーは書名が空で衝突しうるので移さない
+- **ファイル名（14）**: OPF に書名・著者が無いとき（空も含む）だけ `[作者名] 題名.epub` から補う。**OPF に値があれば使わない**（AozoraEpub3 はファイル名に使えない文字を落とす）。補う前のキーのしおりは `_rekeyBookmark` で移し、**古いキーに墓標を立てる**（立てないと Drive・しおりの読み込みの和集合で戻ってきて 2 枚のカードになる）。著者を借りるのは**ファイル名の書名がこの本の書名と同じときだけ**（`[完結] Foo.epub`）。⚠ `dc:title` が空の要素だった本の旧キーは書名が空で衝突しうるので移さない
 - **⚠ `container.xml` / OPF は `stripBom()` を通してから XML として読む。** AozoraEpub3 は `container.xml` を必ず BOM 付きで書き、JSZip は BOM を文字として残す。**Chrome の DOMParser は読み飛ばすが Safari は解析に失敗し、iPad / iPhone で AozoraEpub3 の本が 1 冊も開けなかった**（「container.xml に rootfile 要素がありません」）。Chrome のテストでは再現しないので、`aozoraepub3.js` は `DOMParser` を包んで「XML に BOM が渡らないこと」を見張っている
-- テストは `tests/cases/aozoraepub3.js`（両ファイル各 67 assertion・fixture `ae3` / `notae3` / `ebpaj-import` / `noopf` / `noopf-empty`）。**後の弾**（目次の項目単位の章送り・400KB 分割の本の話数など）は設計書 §9
+- テストは `tests/cases/aozoraepub3.js`（両ファイル各 79 assertion・fixture `ae3` / `notae3` / `ebpaj-import` / `noopf` / `noopf-empty`）。**後の弾**（目次の項目単位の章送り・400KB 分割の本の話数など）は設計書 §9
 
 **本ごとの表示設定（v2.16.0・B-7）** (`BOOK_PREFS_KEY`, `_bpLoad`, `_bpSave`, `_bpPrune`, `_bpGet`, `_bpSet`, `_bpDelete`, `_bpClearAll`, `applyBookPrefs`, `_bpFontUsable`, `toggleBookPrefs`, `updateBookPrefsToggleUI`, `state.bookPrefsEnabled` — 設計書 `design_per_book_settings.md`)。
 
@@ -736,7 +736,7 @@ Both files support syncing `epub_pos_*` / `epub_last_book` keys to/from Google D
   - **⚠ Edge は章送りに追従しない（既知・対処しない）** —— 章ごとに `srcdoc` を入れ替える＝フレーム内で別の文書へ移動するため、Edge の翻訳は最初の章しか訳さない（トップバーは親ドキュメントなので訳されたまま）。Chrome は追従する。**同じ Document を保って DOM を書き換えれば Edge も追従することは実測済み**（`design_browser_translation.md` §2-2 の H・I）だが、本文描画の中核の作り替えになるので見送っている。`document.open()/write()` では駄目（同 J）。
   - **ルビがあると翻訳は壊れる（既知・対処しない）** —— `<ruby>` でテキストノードが分断されるため訳文がつながらない。ルビの無い本は問題なく訳せる。ブラウザ側で原文へ戻せるので、凝った仕組み（ルビを開く設定・章単位の対訳ビュー）は**大きな破綻が出るまで作らない**。
   - **ヘルプ（`help.body`）に「🌐 ブラウザの翻訳で読む」の節を置いてある**（4 言語・読み上げの節の直後）。Edge の制限とルビの崩れはここにしか書いていないので消さないこと。
-  - 検査は `tests/cases/epub-sanitize.js`（両ファイル各 67 assertion。`allow-same-origin` が**ある**こと・CSP の各ディレクティブ・nonce が描画ごとに変わること・**CSP 下でも注入スクリプトが動く**こと＝`EPUB_READY` が届き `_isRendering` が降りること）。**⚠ タイミング由来の退行と、実ブラウザの翻訳が実際に効くかは自動テストで担保できない**ので実機確認が要る。
+  - 検査は `tests/cases/epub-sanitize.js`（両ファイル各 79 assertion。`allow-same-origin` が**ある**こと・CSP の各ディレクティブ・nonce が描画ごとに変わること・**CSP 下でも注入スクリプトが動く**こと＝`EPUB_READY` が届き `_isRendering` が降りること）。**⚠ タイミング由来の退行と、実ブラウザの翻訳が実際に効くかは自動テストで担保できない**ので実機確認が要る。
 - Drive API file IDs validated against `/^[a-zA-Z0-9_-]{10,200}$/` in `driveFindFile()` before use in fetch URLs (prevents URL injection via malicious API responses).
 - `resolveCssText()` uses regex with escaped pattern (not `split().join()`) to replace `url()` references, avoiding mismatches with special characters in URL strings.
 - `_driveToken` stored in memory only (not localStorage) to limit XSS token theft surface.

@@ -4121,7 +4121,10 @@ async function loadEpub(file, fileHandle = null) {
     state.bookTitle = titleText;
     state.bookCreators = [...opfDoc.querySelectorAll('metadata > *|creator, metadata > creator')]
       .map(el => el.textContent.trim()).filter(Boolean);
-    const creatorFromName = !state.bookCreators.length && !!fromName.creator;
+    // 著者を借りるのは、ファイル名の書名がこの本の書名と同じときだけ（[完結] Foo.epub の「完結」を著者にしない）
+    const _nt = v => String(v || '').normalize('NFKC').replace(/\s+/g, '');
+    const creatorFromName = !state.bookCreators.length && !!fromName.creator
+      && (titleFromName || _nt(fromName.title) === _nt(titleText));
     if (creatorFromName) state.bookCreators = [fromName.creator];
     state.bookCreator = state.bookCreators.join('・');
     const langEl = opfDoc.querySelector('metadata > *|language, metadata > language');
@@ -4452,29 +4455,69 @@ async function toDataUri(absPath) {
 //    その中の @import と url() が参照元のディレクトリで解決できなくなる
 const CSS_IMPORT_MAX_DEPTH = 5;
 const CSS_IMPORT_RE = /@import\s+(?:url\(\s*(['"]?)([^'")\s]+)\1\s*\)|(['"])([^'"]+)\3)\s*([^;]*);/gi;
+// コメントだけを消す（文字列の中の "/*" は残す。文字列を先に拾って、そのまま戻す）
+const CSS_COMMENT_RE = /("(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*')|\/\*[\s\S]*?\*\//g;
+// @import の後ろの条件（layer(...) / supports(...) / メディアクエリ）で、展開した中身を包む。
+// 全部を @media に入れると layer(...) や supports(...) が不正なメディアクエリになり、中身が丸ごと無視される
+function _cssImportWrap(inner, cond) {
+  let c = String(cond || '').trim(), layer = null, sup = null;
+  const balanced = (s) => {   // s は '(' で始まる。対応する ')' までを返す
+    let d = 0;
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] === '(') d++;
+      else if (s[i] === ')' && --d === 0) return s.slice(0, i + 1);
+    }
+    return null;
+  };
+  let m = /^layer\b/i.exec(c);
+  if (m) {
+    const rest = c.slice(5);
+    const b = rest.charAt(0) === '(' ? balanced(rest) : '';
+    if (b === null) return '';
+    layer = b ? b.slice(1, -1).trim() : '';
+    c = rest.slice(b.length).trim();
+  }
+  if (/^supports\(/i.test(c)) {
+    const b = balanced(c.slice(8));
+    if (b === null) return '';
+    sup = b;
+    c = c.slice(8 + b.length).trim();
+  }
+  let out = inner;
+  if (layer !== null) out = '@layer' + (layer ? ' ' + layer : '') + '{\n' + out + '\n}';
+  if (sup) out = '@supports ' + sup + '{\n' + out + '\n}';
+  if (c) out = '@media ' + c + '{\n' + out + '\n}';
+  return out;
+}
 async function expandCssImports(css, cssDir, seen, depth) {
   // コメントの中の @import を拾わないよう先にコメントを消す（電書協の book-style.css は説明文に書いている）
-  css = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  css = css.replace(CSS_COMMENT_RE, (all, str) => str || '');
   const hits = [];
   let m;
   CSS_IMPORT_RE.lastIndex = 0;
-  while ((m = CSS_IMPORT_RE.exec(css)) !== null) hits.push({full: m[0], href: (m[2] || m[4] || '').trim(), media: (m[5] || '').trim()});
+  while ((m = CSS_IMPORT_RE.exec(css)) !== null) hits.push({full: m[0], href: (m[2] || m[4] || '').trim(), cond: (m[5] || '').trim()});
+  // 展開しない @import（https: や data: などのスキームつき・//host のプロトコル相対）。
+  // 展開した中身（＝規則）より後ろに残ると @import は無効になるので、先頭へ集める
+  const keep = [];
   for (const h of hits) {
-    let rep = '';
-    if (/^https?:/i.test(h.href)) continue;   // 外部は触らない（CSP で止まるか、そのまま読まれる）
-    const absPath = resolvePath(cssDir, h.href);
+    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(h.href)) { keep.push(h.full); css = css.split(h.full).join(''); continue; }
+    let path = h.href.replace(/[?#].*$/, '');   // style.css?v=2 のような付け足しは ZIP のパスに無い
+    try { path = decodeURIComponent(path); } catch(e) {}
+    const absPath = resolvePath(cssDir, path);
     const f = depth < CSS_IMPORT_MAX_DEPTH && !seen.has(absPath) && state.epub && state.epub.file(absPath);
+    let rep = '';
     if (f) {
       const dir = absPath.includes('/') ? absPath.slice(0, absPath.lastIndexOf('/') + 1) : '';
       const next = new Set(seen); next.add(absPath);
-      let inner = await f.async('text');
-      inner = (await resolveCssText(inner, dir, next, depth + 1)).replace(/@charset\s+[^;]*;/gi, '');
-      rep = h.media ? '@media ' + h.media + '{\n' + inner + '\n}' : inner;
+      const inner = await resolveCssText(await f.async('text'), dir, next, depth + 1);
+      rep = _cssImportWrap(inner, h.cond);
     }
     // 無いファイル・循環・深すぎる入れ子は行ごと消す
     css = css.split(h.full).join(rep);
   }
-  return css;
+  // @charset は <style> の中では意味を持たず、展開した中身の途中に残ると不正になるので全部落とす
+  css = css.replace(/@charset\s+[^;]*;/gi, '');
+  return keep.length ? keep.join('\n') + '\n' + css : css;
 }
 
 async function resolveCssText(css, cssDir, seen, depth) {
@@ -4511,6 +4554,25 @@ const AE3_UNDERLINES = {
   underline: '1px solid', double_underline: '3px double', dotted_underline: '1px dotted',
   dashed_underline: '1px dashed', wave_underline: '1px solid',
 };
+// A3 の置き換えは定数なので 1 度だけ組み立てる
+let _ae3HorizCss = null;
+function _ae3HorizontalCss() {
+  if (_ae3HorizCss) return _ae3HorizCss;
+  const r = [];
+  for (let n = 1; n <= 30; n++) r.push('div.pt' + n + '{margin-top:0!important;margin-inline-start:' + n + 'em!important;}');
+  for (let n = 1; n <= 25; n++) r.push('div.pb' + n + '{margin-bottom:0!important;margin-inline-end:' + n + 'em!important;}');
+  for (let n = 1; n <= 40; n++) r.push('div.jzm' + n + '{max-height:none!important;max-width:' + n + 'em!important;}');
+  for (const k in AE3_UNDERLINES) {
+    r.push('span.' + k + '{border-right:0!important;padding-right:0!important;border-bottom:'
+      + AE3_UNDERLINES[k] + ' currentColor!important;padding-bottom:1px!important;}');
+  }
+  r.push('span.left_underline{border-left:0!important;padding-left:0!important;'
+    + 'border-top:1px solid currentColor!important;padding-top:1px!important;}');
+  r.push('span.fullsp,.half_em_space{padding-top:0!important;padding-inline-start:.5em!important;}');
+  r.push('span.wrc,.gaiji img{left:auto!important;}');
+  r.push('.introduction,.postscript{float:none!important;height:auto!important;margin-right:0!important;display:block!important;}');
+  return (_ae3HorizCss = r.join(''));
+}
 function aozoraFixCss() {
   if (state.bookOrigin !== 'aozoraepub3') return '';
   const r = [];
@@ -4520,20 +4582,7 @@ function aozoraFixCss() {
   // A3: 字下げ・字詰め・傍線などは縦書き前提の物理プロパティ（margin-top 等）で書かれている。
   //     「横書き」モードで強制的に横組みにすると、8 字下げの見出しが「上に 8 行の空白」になって
   //     本文が画面の外へ押し出される。行頭・行末の論理プロパティへ置き換える（§5）
-  if (state.writingMode === 'horizontal') {
-    for (let n = 1; n <= 30; n++) r.push('div.pt' + n + '{margin-top:0!important;margin-inline-start:' + n + 'em!important;}');
-    for (let n = 1; n <= 25; n++) r.push('div.pb' + n + '{margin-bottom:0!important;margin-inline-end:' + n + 'em!important;}');
-    for (let n = 1; n <= 40; n++) r.push('div.jzm' + n + '{max-height:none!important;max-width:' + n + 'em!important;}');
-    for (const k in AE3_UNDERLINES) {
-      r.push('span.' + k + '{border-right:0!important;padding-right:0!important;border-bottom:'
-        + AE3_UNDERLINES[k] + ' currentColor!important;padding-bottom:1px!important;}');
-    }
-    r.push('span.left_underline{border-left:0!important;padding-left:0!important;'
-      + 'border-top:1px solid currentColor!important;padding-top:1px!important;}');
-    r.push('span.fullsp,.half_em_space{padding-top:0!important;padding-inline-start:.5em!important;}');
-    r.push('span.wrc,.gaiji img{left:auto!important;}');
-    r.push('.introduction,.postscript{float:none!important;height:auto!important;margin-right:0!important;display:block!important;}');
-  }
+  if (state.writingMode === 'horizontal') r.push(_ae3HorizontalCss());
   // A4: テーマは html,body の文字色しか変えないので、ePub が色を直書きした要素が暗い紙に沈む（§6）。
   //     明るいテーマでは出版元の色のまま残す
   const c = THEME_CONTENT[state.theme] || THEME_CONTENT[''];
@@ -4867,7 +4916,8 @@ async function buildSrcdoc(xhtmlText, xhtmlAbsPath, scrollTarget, readySeq) {
     if (!f) { link.remove(); continue; }
     const cssDir = absPath.includes('/') ? absPath.slice(0, absPath.lastIndexOf('/')+1) : '';
     let css = await f.async('text');
-    css = await resolveCssText(css, cssDir);
+    // 読み込み元自身を seen に入れておく（A→B→A の循環で A がもう一度展開されないように）
+    css = await resolveCssText(css, cssDir, new Set([absPath]));
     const style = doc.createElement('style');
     style.textContent = css;
     link.parentNode.replaceChild(style, link);
@@ -12662,6 +12712,9 @@ function _rekeyBookmark(oldKey, newKey) {
   try { localStorage.setItem(newKey, val); } catch(e) { notifyStorageError(); return false; }
   _rdRekeyStats(oldKey, newKey);
   try { localStorage.removeItem(oldKey); } catch(e) {}
+  // 古いキーに墓標を立てる。立てないと Drive の取り込み・しおりの読み込み（和集合で合流する）で
+  // 古いキーが戻り、新しいキーと 2 枚のカードになる（新しいキーが在るので移し替えも二度と走らない）
+  _rlAddTombstone(oldKey);
   try {
     const lb = JSON.parse(localStorage.getItem('epub_last_book'));
     if (lb && lb.bookKey === oldKey) localStorage.setItem('epub_last_book', JSON.stringify({ ...lb, bookKey: newKey }));

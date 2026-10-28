@@ -69,6 +69,17 @@ var CHAIN = Promise.resolve()
   T('A1: 相対パスの @import が残っていない', !/@import\s+(url\()?['"]?(?!https?:)[^'"\s)]*\.css/i.test(css),
     (css.match(/@import[^;]*;/g) || []).join(' '));
   T('A1: コメントの中の @import は展開しない（evil.css は無い）', css.indexOf('evil') < 0);
+  // ── コードレビューの指摘（2026-10-28）
+  T('A1: layer() つきの @import は @layer で包む（@media にしない）', px(cs('lay').letterSpacing) === 3, cs('lay').letterSpacing);
+  T('A1: supports() つきの @import は @supports で包む', px(cs('sup').wordSpacing) === 5, cs('sup').wordSpacing);
+  T('A1: ?v=2 のような付け足しのあるパスも展開する', cs('qs').textTransform === 'uppercase', cs('qs').textTransform);
+  T('A1: 文字列の中の /* でその後ろの規則を消さない', cs('after').fontVariantCaps === 'small-caps', cs('after').fontVariantCaps);
+  T('A1: 読み込み元へ戻る循環の先の規則は効く', px(cs('rc').textIndent) === 2, cs('rc').textIndent);
+  T('A1: 読み込み元自身をもう一度展開しない', (css.match(/\.own\{/g) || []).length === 1, String((css.match(/\.own\{/g) || []).length));
+  var bs = [].filter.call(d.querySelectorAll('style'), function (s) { return s.textContent.indexOf('.own{') >= 0; })[0];
+  var bsText = bs ? bs.textContent.trim() : '';
+  T('A1: 展開しない外部の @import は先頭に集める（規則の後ろだと無効）', bsText.indexOf('@import url(https://fonts.googleapis.com') === 0,
+    bsText.slice(0, 60));
 })
 
 // ══ 10: 生成元の判定・青空文庫の奥付 ═══════════════════════════════
@@ -211,6 +222,13 @@ var CHAIN = Promise.resolve()
   T('14: 古いキーは消える', localStorage.getItem(window.__oldKey) === null);
   T('14: epub_last_book も新しいキー', JSON.parse(localStorage.getItem('epub_last_book')).bookKey === state.bookKey);
   T('14: 本ごとの表示設定も引き継ぐ', (_bpGet(state.bookKey) || {}).fontSize === 140 && !_bpGet(window.__oldKey));
+  // 墓標が無いと、Drive の取り込み・しおりの読み込み（和集合）で古いキーが戻って 2 枚のカードになる
+  T('14: 古いキーに墓標を立てる', _rlLoadPurged().some(function (e) { return e.h === _rlHashKey(window.__oldKey); }));
+  // 別の端末のしおり（古いキー）が合流して戻ってきても、墓標で消える
+  localStorage.setItem(window.__oldKey, JSON.stringify({spineIdx: 0, ratio: 0, lastOpenedAt: '2026-01-01T00:00:00Z', creator: ''}));
+  _rlApplyTombstones([]);
+  T('14: 戻ってきた古いキーは墓標で消える', localStorage.getItem(window.__oldKey) === null);
+  T('14: 新しいキーは残る', !!localStorage.getItem(state.bookKey));
   return openFixture('noopf-empty.epub', '[テスト作者] 空の書名.epub');
 })
 .then(function () {
@@ -221,6 +239,15 @@ var CHAIN = Promise.resolve()
 .then(function () {
   T('14: OPF に値があればファイル名は使わない', state.bookTitle === 'テスト青空' && state.bookCreator === '青空作者',
     state.bookTitle + ' / ' + state.bookCreator);
+  return openFixture('titleonly.epub', '[完結] 別の本.epub');
+})
+.then(function () {
+  T('14: 書名の違うファイル名の [ ] は著者にしない', state.bookTitle === 'タイトルだけの本' && state.bookCreator === '',
+    state.bookTitle + ' / ' + state.bookCreator);
+  return openFixture('titleonly.epub', '[作者X] タイトルだけの本.epub');
+})
+.then(function () {
+  T('14: 書名が同じなら著者だけ借りる', state.bookCreator === '作者X', state.bookCreator);
 })
 
 // ══ 後片付け ═════════════════════════════════════════════════════

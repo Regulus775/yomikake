@@ -387,13 +387,25 @@ def build_ebpaj_import(path):
                "@import url('b.css') screen;\n"
                '@import "missing.css";\n'
                '@import "c.css";\n'
-               '.own{text-decoration:underline;}\n')
+               '@import "lay.css" layer(base);\n'            # layer() は @media にしない
+               '@import "sup.css" supports(display: grid);\n'  # supports() も
+               '@import "qs.css?v=2";\n'                      # 付け足しのあるパス
+               '@import url(https://fonts.googleapis.com/css2?family=Test);\n'  # 外部は展開せず先頭へ
+               '@import "root-cycle.css";\n'                  # 読み込み元へ戻る循環
+               '.own{text-decoration:underline;}\n'
+               '.str::before{content:"/*";}\n'                # 文字列の中の /* はコメントではない
+               '.after{font-variant:small-caps;}\n'
+               '/* おわり */\n')                             # 旧実装はここの */ まで（.after ごと）消していた
     z.writestr(st + 'a.css', '@charset "UTF-8";\n@import "sub/e.css";\n'
                '.upr{text-orientation:upright;}\n.tcy{text-combine-upright:all;}\n')
     z.writestr(st + 'sub/e.css', '.bg{background-image:url(../../image/x.png);}\n')
     z.writestr(st + 'b.css', '.scr{font-style:italic;}\n')
     z.writestr(st + 'c.css', '@import "d.css";\n.cc{font-weight:bold;}\n')
     z.writestr(st + 'd.css', '@import "c.css";\n.dd{text-decoration:line-through;}\n')
+    z.writestr(st + 'lay.css', '.lay{letter-spacing:3px;}\n')
+    z.writestr(st + 'sup.css', '.sup{word-spacing:5px;}\n')
+    z.writestr(st + 'qs.css', '.qs{text-transform:uppercase;}\n')
+    z.writestr(st + 'root-cycle.css', '@import "book-style.css";\n.rc{text-indent:2px;}\n')
     z.writestr('item/xhtml/p-001.xhtml',
                '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n'
                '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ja" class="vrtl"><head>'
@@ -401,11 +413,33 @@ def build_ebpaj_import(path):
                '<body><div class="main"><p>縦中横<span class="tcy" id="tcy">12</span>と正立<span class="upr" id="upr">ABC</span>。</p>'
                '<p class="bg" id="bg">背景画像</p><p class="scr" id="scr">メディア指定</p>'
                '<p class="cc" id="cc">循環 c</p><p class="dd" id="dd">循環 d</p><p class="own" id="own">自分の規則</p>'
-               '<p class="ev" id="ev">evil</p></div></body></html>')
+               '<p class="ev" id="ev">evil</p><p class="lay" id="lay">layer</p><p class="sup" id="sup">supports</p>'
+               '<p class="qs" id="qs">query</p><p class="rc" id="rc">root cycle</p><p class="after" id="after">after</p>'
+               '</div></body></html>')
     items = ['<item id="p1" href="xhtml/p-001.xhtml" media-type="application/xhtml+xml"/>',
              '<item id="bs" href="style/book-style.css" media-type="text/css"/>',
              '<item id="img" href="image/x.png" media-type="image/png"/>']
     z.writestr('item/standard.opf', opf('テスト電書協', 'テスト作者', items, ['<itemref idref="p1"/>']))
+    z.close()
+
+
+def build_titleonly(path):
+    """書名はあるが著者の無い本（ファイル名の [ ] を著者として借りてよいかの検査・§7）。"""
+    z = zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED)
+    z.writestr('mimetype', 'application/epub+zip')
+    z.writestr('META-INF/container.xml', CONTAINER)
+    z.writestr('OEBPS/ch0.xhtml',
+               '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n'
+               '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>本文</title></head>'
+               '<body><p>著者のない本の本文。</p></body></html>')
+    z.writestr('OEBPS/content.opf',
+               '<?xml version="1.0" encoding="UTF-8"?>\n'
+               '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bid">'
+               '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
+               '<dc:identifier id="bid">urn:uuid:yomikake-test-titleonly</dc:identifier>'
+               '<dc:title>タイトルだけの本</dc:title><dc:language>ja</dc:language></metadata>'
+               '<manifest><item id="c0" href="ch0.xhtml" media-type="application/xhtml+xml"/></manifest>'
+               '<spine><itemref idref="c0"/></spine></package>')
     z.close()
 
 
@@ -448,7 +482,8 @@ def main():
                      ('notae3.epub', lambda p: build_ae3(p, ae3_ids=False)),
                      ('ebpaj-import.epub', build_ebpaj_import),
                      ('noopf.epub', build_noopf),
-                     ('noopf-empty.epub', lambda p: build_noopf(p, empty_title=True))):
+                     ('noopf-empty.epub', lambda p: build_noopf(p, empty_title=True)),
+                     ('titleonly.epub', build_titleonly)):
         p = os.path.join(out, name)
         fn(p)
         print('%s (%d bytes)' % (p, os.path.getsize(p)))
