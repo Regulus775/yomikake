@@ -194,7 +194,7 @@ Authorization: Bearer {合言葉}            ← §5-3
 |---|---|---|
 | 1 | Android: 共有で受け取った URL を履歴と突き合わせ → 履歴の行へ移って新着チェック（§4-2 の 1）**✅ 実装・実機確認済み（2026-10-28・novel_downloader `f3acc75`・`android/design_history.md` §19）** | novel_downloader Android |
 | 2 | 読了パネルに「🔄 novel_downloader で更新を確認」・`nd:startOffset` の読み取り（§4-3）・続きの 1 話目を飛ばす不具合（§4-4）**✅ 実装（両ファイル）・テスト `tests/cases/update-check.js`（各 59 assertion）・読了パネルからの流れも §4-5 のカードからの流れも Android 実機で通し確認済み（2026-10-28）** | yomikake |
-| 3 | PC の GUI: URL 欄・受信箱に本棚の作品が来たら、その行へ移って新着チェック（§4-2 の 2・3） | novel_downloader GUI |
+| 3 | PC の GUI: URL 欄・受信箱に本棚の作品が来たら、その行へ移って新着チェック（§4-2 の 2・3）**✅ 実装（2026-10-28・novel_downloader `design_gui_v2.md` §8.21）。自動では確認せず「🔄 新着を確認」を押したときだけ（URL 欄はコピーしただけで自動入力されるため）。Windows / macOS 実機確認済み** | novel_downloader GUI |
 | — | G1 の窓口（§5） | 見送り |
 
 1 と 2 で Android の流れ（読み終える → 共有 → 新着を見る → 続きを取得）が完結する。3 は PC と iPhone（受信箱）向け。
@@ -214,8 +214,8 @@ yomikake はこの PC から配信し（`adb reverse` で端末の `http://local
 
 ## 8. 残っている確認
 
-1. GUI の URL 欄に本棚の作品の URL を貼ったとき、今は何が起きるか（全話の取り直しになるか）。
-2. 単発の `--check-update FILE --progress-json` が `checkresult` を出すか（GUI が 1 件だけ確認するのに使う）。
+1. ~~GUI の URL 欄に本棚の作品の URL を貼ったとき、今は何が起きるか~~ → **全話の取り直しになっていた**（「ダウンロード」で第 1 話から取り、同名の .txt / .epub を上書き）。§7 の 3 で直した。
+2. ~~単発の `--check-update FILE --progress-json` が `checkresult` を出すか~~ → **出す**（本棚と同じ `path` 付き）。ただし失敗時は出さないので、GUI 側で失敗として扱う。
 3. ~~Android の履歴の `sourceUrl` と、yomikake が渡す `dc:source` が同じ書き方になっているか~~ → **一致を実機で確認（§7-1・読了パネルとカードの両方）**。
 
 ## 9. ついでに見つけたこと
