@@ -332,6 +332,15 @@ KOReader の対応表（`epub_kosync_docs`）は本の中身からハッシュ�
 
 ---
 
+### 8-3-1. 実機確認の記録
+
+| 日付 | 本 | 環境 | 確認したこと | 結果 |
+|---|---|---|---|---|
+| 2026-10-28 | 海野十三『暗号数字』（`div.border` 10・`tcy` 69・`upr` 22） | ご本人 | ダークで罫囲みの線が見える（A4） | ○ |
+| 2026-10-28 | 芥川龍之介『浅草公園 ――或シナリオ――』（`tcy` 86・傍点・地から一字上げ） | Firefox | 縦中横になる（A2） | ○ |
+
+未確認: 横書きモードでの字下げ（A3）・電書協形式の商業本（A1）・章送りの重さ・iPad で開けること（BOM の修正 §8-4）・ファイル名からの補完（14）
+
 ### 8-4. 実機で見つかった不具合（2026-10-28）
 
 - **iPad で AozoraEpub3 の本が開けない**（「container.xml に rootfile 要素がありません」）。AozoraEpub3 は `container.xml` を BOM 付きで書く（手元の 9 冊すべて。OPF には付かない）。JSZip の `async('text')` は BOM を U+FEFF として残し、Chrome の `DOMParser` は読み飛ばすが **Safari は XML 宣言の前の文字として解析に失敗する**。今回の変更による退行ではなく以前からの不具合（Chrome でしか試していなかった）。`container.xml` と OPF を `stripBom()` してから解析する。Chrome のテストでは失敗が再現しないので、`DOMParser.prototype.parseFromString` を包んで BOM が渡らないことを検査する
