@@ -4479,6 +4479,56 @@ async function resolveCssText(css, cssDir, seen, depth) {
   return css;
 }
 
+// ── AozoraEpub3 の CSS の補正（design_aozoraepub3.md §4〜§6）──────────────
+// クラス名だけを頼りに書き換えるので、AozoraEpub3 の本（state.bookOrigin）でだけ入れる。
+// pt2 や border は他の ePub でも使われうる名前で、関係の無い本の組版を変えてしまうため。
+// 紙の色が暗いテーマか（相対輝度で判定。テーマ名を列挙しないのでテーマが増えても直さなくてよい）
+function isDarkPaper(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || ''));
+  if (!m) return false;
+  const lin = v => { v = parseInt(v, 16) / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  return 0.2126 * lin(m[1]) + 0.7152 * lin(m[2]) + 0.0722 * lin(m[3]) < 0.2;
+}
+// AozoraEpub3 の傍線（縦書きでは文字の右＝border-right）。横書きでは下線に置き換える
+const AE3_UNDERLINES = {
+  underline: '1px solid', double_underline: '3px double', dotted_underline: '1px dotted',
+  dashed_underline: '1px dashed', wave_underline: '1px solid',
+};
+function aozoraFixCss() {
+  if (state.bookOrigin !== 'aozoraepub3') return '';
+  const r = [];
+  // A2: 縦中横を .tcy span { text-combine: horizontal }（廃止済みの書き方）だけで書いている。
+  //     Firefox はこれを解さず、縦中横がすべて横倒しになっていた（§1-4 の実測）
+  r.push('.tcy>span{text-combine-upright:all!important;}');
+  // A3: 字下げ・字詰め・傍線などは縦書き前提の物理プロパティ（margin-top 等）で書かれている。
+  //     「横書き」モードで強制的に横組みにすると、8 字下げの見出しが「上に 8 行の空白」になって
+  //     本文が画面の外へ押し出される。行頭・行末の論理プロパティへ置き換える（§5）
+  if (state.writingMode === 'horizontal') {
+    for (let n = 1; n <= 30; n++) r.push('div.pt' + n + '{margin-top:0!important;margin-inline-start:' + n + 'em!important;}');
+    for (let n = 1; n <= 25; n++) r.push('div.pb' + n + '{margin-bottom:0!important;margin-inline-end:' + n + 'em!important;}');
+    for (let n = 1; n <= 40; n++) r.push('div.jzm' + n + '{max-height:none!important;max-width:' + n + 'em!important;}');
+    for (const k in AE3_UNDERLINES) {
+      r.push('span.' + k + '{border-right:0!important;padding-right:0!important;border-bottom:'
+        + AE3_UNDERLINES[k] + ' currentColor!important;padding-bottom:1px!important;}');
+    }
+    r.push('span.left_underline{border-left:0!important;padding-left:0!important;'
+      + 'border-top:1px solid currentColor!important;padding-top:1px!important;}');
+    r.push('span.fullsp,.half_em_space{padding-top:0!important;padding-inline-start:.5em!important;}');
+    r.push('span.wrc,.gaiji img{left:auto!important;}');
+    r.push('.introduction,.postscript{float:none!important;height:auto!important;margin-right:0!important;display:block!important;}');
+  }
+  // A4: テーマは html,body の文字色しか変えないので、ePub が色を直書きした要素が暗い紙に沈む（§6）。
+  //     明るいテーマでは出版元の色のまま残す
+  const c = THEME_CONTENT[state.theme] || THEME_CONTENT[''];
+  if (isDarkPaper(c.paper)) {
+    r.push('a:link,a:visited,a:active{color:inherit!important;}');
+    r.push('.border,.dashed_border,.custom_parameter_block{border-color:currentColor!important;box-shadow:none!important;}');
+    r.push('.introduction,.postscript{color:inherit!important;opacity:.8;}');
+    r.push('.gaiji img{filter:invert(1);}');
+  }
+  return r.join('');
+}
+
 // Parse xhtml/html text, resolve all resources, return HTML string ready for srcdoc
 // 1 描画ごとに作り直す CSP の nonce。固定値にすると ePub 側に書けてしまう
 function makeCspNonce() {
@@ -4936,6 +4986,7 @@ async function buildSrcdoc(xhtmlText, xhtmlAbsPath, scrollTarget, readySeq) {
       '@media (hover:none){html::-webkit-scrollbar{display:none!important;}html{scrollbar-width:none!important;}}') : '',
     'img{max-width:100%!important;max-height:95vh!important;object-fit:contain!important;}',
     'svg{max-width:100%!important;max-height:95vh!important;}',  // scale down full-page SVG in manga/image ePub
+    aozoraFixCss(),  // AozoraEpub3 の本だけ（縦中横・横書きでの字下げ等・暗いテーマの色）
     fontRule,
     weightRule,
     strokeRule,

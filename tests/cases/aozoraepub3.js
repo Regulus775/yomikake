@@ -29,6 +29,11 @@ function spineIdxOf(name) {
   return -1;
 }
 
+function px(v) { return parseFloat(v) || 0; }
+function em(id) { return px(cs(id).fontSize); }
+function near(a, b) { return Math.abs(a - b) <= 1; }
+function injected() { var s = idoc().getElementById('epub-viewer-inject'); return s ? s.textContent : ''; }
+
 localStorage.clear();
 var CHAIN = Promise.resolve()
 
@@ -90,6 +95,78 @@ var CHAIN = Promise.resolve()
     state.bookSourceSite + '/' + state.bookAozoraSource);
   updateHelpContent();
   T('10: ヘルプに作成ツールを出さない', document.getElementById('modal-body').innerHTML.indexOf('AozoraEpub3') < 0);
+})
+
+// ══ A2〜A4: AozoraEpub3 の CSS の補正 ═══════════════════════════════
+.then(function () { return openFixture('ae3.epub'); })
+.then(function () {
+  state.theme = ''; state.writingMode = 'vertical';
+  return showSpine(spineIdxOf('0001.xhtml'));
+})
+.then(function () {
+  var t = idoc().querySelector('#tcy > span');
+  T('A2: .tcy > span に text-combine-upright:all', !!t && idoc().defaultView.getComputedStyle(t).textCombineUpright === 'all');
+  T('A2: 注入スタイルに縦中横の規則がある', injected().indexOf('.tcy>span{text-combine-upright:all') >= 0);
+  // 縦書きは AozoraEpub3 の前提どおりなので A3 は入れない
+  T('A3: 縦書きでは字下げは margin-top のまま', near(px(cs('pt2').marginTop), 2 * em('pt2')),
+    cs('pt2').marginTop + ' / em=' + em('pt2'));
+  T('A3: 縦書きでは置き換えの規則を入れない', injected().indexOf('div.pt2{') < 0);
+  T('A4: 明るいテーマではリンクは出版元の色', cs('link').color === 'rgb(0, 0, 204)', cs('link').color);
+  changeWritingMode('horizontal');
+  return wait(900);
+})
+.then(function () {
+  T('A3: 横書きにした', state.writingMode === 'horizontal' && idoc().defaultView.getComputedStyle(idoc().body).writingMode === 'horizontal-tb');
+  var p2 = cs('pt2');
+  T('A3: 横書きで二字下げは行頭の 2em', near(px(p2.marginLeft), 2 * em('pt2')) && px(p2.marginTop) === 0,
+    'left=' + p2.marginLeft + ' top=' + p2.marginTop);
+  var pb = cs('pb2');
+  T('A3: 横書きで地から二字上げは行末の 2em', near(px(pb.marginRight), 2 * em('pb2')) && px(pb.marginBottom) === 0,
+    'right=' + pb.marginRight + ' bottom=' + pb.marginBottom);
+  var jz = cs('jzm');
+  T('A3: 横書きで十字詰めは幅 10em', near(px(jz.maxWidth), 10 * em('jzm')) && jz.maxHeight === 'none',
+    'max-width=' + jz.maxWidth + ' max-height=' + jz.maxHeight);
+  var ul = cs('ul');
+  T('A3: 横書きで傍線は下線', ul.borderBottomStyle === 'solid' && px(ul.borderRightWidth) === 0,
+    ul.borderBottomStyle + '/' + ul.borderRightWidth);
+  T('A3: 二重傍線は二重の下線', cs('dul').borderBottomStyle === 'double' && px(cs('dul').borderBottomWidth) >= 3,
+    cs('dul').borderBottomStyle + '/' + cs('dul').borderBottomWidth);
+  T('A3: 左傍線は上線', cs('lul').borderTopStyle === 'solid' && px(cs('lul').borderLeftWidth) === 0,
+    cs('lul').borderTopStyle + '/' + cs('lul').borderLeftWidth);
+  T('A3: 二分アキは行頭側の padding', px(cs('fullsp').paddingLeft) > 0 && px(cs('fullsp').paddingTop) === 0,
+    cs('fullsp').paddingLeft + '/' + cs('fullsp').paddingTop);
+  T('A3: 割注・外字のずらしを戻す', cs('wrc').left === 'auto' || px(cs('wrc').left) === 0, cs('wrc').left);
+  T('A3: 前書きの回り込みを外す', cs('intro').cssFloat === 'none' && cs('intro').height !== '70%', cs('intro').cssFloat);
+  // 実寸: 二字下げの段落の左端が、地の文の段落より 2em 右にある（規則が入っても効いていない、を拾う）
+  var d = idoc(), base = d.querySelector('#kobo\\.2\\.1 ~ p'), ind = d.querySelector('#pt2 p');
+  var dx = ind.getBoundingClientRect().left - base.getBoundingClientRect().left;
+  T('A3: 実寸で二字下がっている', near(dx, 2 * em('pt2')), 'dx=' + dx.toFixed(1));
+  changeTheme('dark');
+  return wait(900);
+})
+.then(function () {
+  var body = idoc().defaultView.getComputedStyle(idoc().body).color;
+  T('A4: ダークでリンクは本文の色', cs('link').color === body, cs('link').color + ' / ' + body);
+  T('A4: ダークで罫囲みの線は本文の色', cs('border').borderTopColor === body, cs('border').borderTopColor);
+  T('A4: ダークで後書きは本文の色', cs('post').color === body, cs('post').color);
+  T('A4: ダークで外字画像を反転', cs('gaiji').filter.indexOf('invert') >= 0, cs('gaiji').filter);
+  changeTheme('hoshi');
+  return wait(900);
+})
+.then(function () {
+  T('A4: 星空（暗いテーマ）でも効く', cs('link').color === idoc().defaultView.getComputedStyle(idoc().body).color, cs('link').color);
+  T('A4: 暗いテーマの判定', isDarkPaper('#111111') && isDarkPaper('#0e1a2e') && !isDarkPaper('#fdf8f0') && !isDarkPaper('#dfc89a') && !isDarkPaper('#f0f0fa'));
+  return openFixture('notae3.epub');
+})
+// 対照: 同じ中身でも AozoraEpub3 と判定されなければ何も足さない（横書き・ダークのまま開く）
+.then(function () { return showSpine(spineIdxOf('0001.xhtml')); })
+.then(function () {
+  T('対照: 横書き・星空のまま', state.writingMode === 'horizontal' && state.theme === 'hoshi');
+  T('対照: 補正の規則を入れない', injected().indexOf('text-combine-upright:all') < 0 && injected().indexOf('div.pt2{') < 0);
+  T('対照: 字下げは ePub の指定のまま（margin-top）', near(px(cs('pt2').marginTop), 2 * em('pt2')), cs('pt2').marginTop);
+  T('対照: リンクは ePub の色のまま', cs('link').color === 'rgb(0, 0, 204)', cs('link').color);
+  changeWritingMode('vertical'); changeTheme('');
+  return wait(900);
 })
 
 // ══ 後片付け ═════════════════════════════════════════════════════
