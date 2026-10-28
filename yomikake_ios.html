@@ -4276,6 +4276,20 @@ document.getElementById('file-input').addEventListener('cancel', () => {
   hideLoading();
 });
 
+// XHTML の自己終端タグ（<span class="halfsep"/> や <a id="x"/>）を開始＋終了の形に直す。
+// 本文は HTML として読むので、HTML のパーサは中身を持てる要素の "/>" を無視して閉じない。
+// 閉じないと段落の残りがその要素の中に入る —— 岩波少年文庫の Kobo 版では幅 1em・高さ 0.5em の
+// 空き（.halfsep）の中に段落全体が入り、文字が 1 文字ぶんの場所に積み重なっていた。
+// <script/> は以降を全部テキストとして飲み込み、本文が空になる（マンガの kobo.js）。
+// 空要素（br・img など）は "/>" のままでよい。
+// ⚠ 本文の描画（buildSrcdoc）と KOReader の位置の解決（_koParseChapter）は必ずこれを通す。
+//    DOM の形が食い違うと XPointer の「N 番目の兄弟」がずれる
+const HTML_VOID_TAGS = new Set(['area','base','br','col','embed','hr','img','input','link','meta',
+  'param','source','track','wbr','basefont','bgsound','frame','keygen']);
+function expandSelfClosingTags(xhtmlText) {
+  return String(xhtmlText || '').replace(/<([A-Za-z][\w.:-]*)(\s[^<>]*?)?\s*\/>/g,
+    (all, tag, attrs) => HTML_VOID_TAGS.has(tag.toLowerCase()) ? all : '<' + tag + (attrs || '') + '></' + tag + '>');
+}
 // 文字列の先頭の BOM を落とす（XML として読む前に。理由は loadEpub の container.xml の箇所）
 function stripBom(s) { return String(s || '').replace(/^\uFEFF/, ''); }
 async function loadEpub(file) {
@@ -5097,12 +5111,8 @@ async function buildSrcdoc(xhtmlText, xhtmlAbsPath, scrollTarget, readySeq) {
     ? xhtmlAbsPath.slice(0, xhtmlAbsPath.lastIndexOf('/')+1)
     : '';
 
-  // Fix XHTML self-closing non-void elements before HTML5 parsing.
-  // XHTML allows self-closing <script/> but HTML5 treats it as an unclosed tag,
-  // consuming all subsequent markup as raw text → empty body → blank page.
-  // Expand self-closing script/style tags to their open+close form first.
-  xhtmlText = xhtmlText.replace(/<(script|style)(\s[^>]*)?\s*\/>/gi,
-    (_, tag, attrs) => '<' + tag + (attrs || '') + '></' + tag + '>');
+  // XHTML の自己終端タグを HTML として読める形に直す（理由は expandSelfClosingTags）
+  xhtmlText = expandSelfClosingTags(xhtmlText);
 
   const doc = new DOMParser().parseFromString(xhtmlText, 'text/html');
 
@@ -5983,7 +5993,7 @@ function extractFxlImagePath(xhtmlText, absXhtmlPath) {
   // XHTML 自己終端タグ <script.../> <style.../> を HTML 互換形式に変換。
   // HTML5 パーサは自己終端 / を script/style で認識せず、以降すべてを raw text として
   // 食い尽くすため body が空になり画像を検出できなくなる（buildSrcdoc と同じ対策）。
-  const preprocessed = xhtmlText.replace(/<(script|style)(\s[^>]*)?\s*\/>/gi, '<$1$2></$1>');
+  const preprocessed = expandSelfClosingTags(xhtmlText);
   const doc = new DOMParser().parseFromString(preprocessed, 'text/html');
   const el = doc.querySelector('svg image') || doc.querySelector('img');
   if (!el) return null;
@@ -6064,7 +6074,7 @@ async function applyFxlSearchHighlight() {
   let xhtmlText;
   try { xhtmlText = await file.async('string'); } catch (e) { return; }
   // 自己終端 <script/> 対策（extractFxlImagePath と同じ前処理）
-  const preprocessed = xhtmlText.replace(/<(script|style)(\s[^>]*)?\s*\/>/gi, '<$1$2></$1>');
+  const preprocessed = expandSelfClosingTags(xhtmlText);
   const doc = new DOMParser().parseFromString(preprocessed, 'text/html');
   const svg = doc.querySelector('svg');
   if (!svg) return;
@@ -10407,7 +10417,7 @@ function koResolveSteps(rootEl, steps) {
 function _koParseChapter(txt) {
   // buildSrcdoc と同じ前処理（自己終端 <script/> は HTML5 パーサが本文ごと飲み込む）
   return new DOMParser().parseFromString(
-    txt.replace(/<(script|style)(\s[^>]*)?\s*\/>/gi, (_, tag, a) => '<' + tag + (a || '') + '></' + tag + '>'),
+    expandSelfClosingTags(txt),
     'text/html');
 }
 

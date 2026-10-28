@@ -397,7 +397,8 @@ def build_ebpaj_import(path):
                '.after{font-variant:small-caps;}\n'
                '/* おわり */\n')                             # 旧実装はここの */ まで（.after ごと）消していた
     z.writestr(st + 'a.css', '@charset "UTF-8";\n@import "sub/e.css";\n'
-               '.upr{text-orientation:upright;}\n.tcy{text-combine-upright:all;}\n')
+               '.upr{text-orientation:upright;}\n.tcy{text-combine-upright:all;}\n'
+               '.halfsep{display:inline-block;width:1em;height:0.5em;}\n')
     z.writestr(st + 'sub/e.css', '.bg{background-image:url(../../image/x.png);}\n')
     z.writestr(st + 'b.css', '.scr{font-style:italic;}\n')
     z.writestr(st + 'c.css', '@import "d.css";\n.cc{font-weight:bold;}\n')
@@ -415,6 +416,9 @@ def build_ebpaj_import(path):
                '<p class="cc" id="cc">循環 c</p><p class="dd" id="dd">循環 d</p><p class="own" id="own">自分の規則</p>'
                '<p class="ev" id="ev">evil</p><p class="lay" id="lay">layer</p><p class="sup" id="sup">supports</p>'
                '<p class="qs" id="qs">query</p><p class="rc" id="rc">root cycle</p><p class="after" id="after">after</p>'
+               # XHTML の自己終端タグ（岩波少年文庫の Kobo 版の <span class="halfsep"/>）。HTML として読むと閉じず、
+               # 段落の残りが幅 1em・高さ 0.5em の箱に入って文字が積み重なっていた
+               '<p id="hsp"><span class="halfsep" id="hs"/>「半角アキのあとの本文」<a id="anc"/>アンカーのあと<br/>改行のあと</p>'
                '</div></body></html>')
     items = ['<item id="p1" href="xhtml/p-001.xhtml" media-type="application/xhtml+xml"/>',
              '<item id="bs" href="style/book-style.css" media-type="text/css"/>',

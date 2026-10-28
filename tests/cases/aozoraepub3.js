@@ -69,6 +69,11 @@ var CHAIN = Promise.resolve()
   T('A1: 相対パスの @import が残っていない', !/@import\s+(url\()?['"]?(?!https?:)[^'"\s)]*\.css/i.test(css),
     (css.match(/@import[^;]*;/g) || []).join(' '));
   T('A1: コメントの中の @import は展開しない（evil.css は無い）', css.indexOf('evil') < 0);
+  // ── XHTML の自己終端タグ（<span class="halfsep"/>）が段落の残りを飲み込まない
+  T('自己終端: <span/> の中に本文が入らない', d.getElementById('hs').textContent === '', JSON.stringify(d.getElementById('hs').textContent.slice(0, 20)));
+  T('自己終端: <a/> の中に本文が入らない', d.getElementById('anc').textContent === '');
+  T('自己終端: <br/> は空要素のまま（本文は段落に残る）', d.getElementById('hsp').querySelectorAll('br').length === 1
+    && d.getElementById('hsp').textContent.indexOf('改行のあと') >= 0);
   // ── コードレビューの指摘（2026-10-28）
   T('A1: layer() つきの @import は @layer で包む（@media にしない）', px(cs('lay').letterSpacing) === 3, cs('lay').letterSpacing);
   T('A1: supports() つきの @import は @supports で包む', px(cs('sup').wordSpacing) === 5, cs('sup').wordSpacing);
@@ -80,6 +85,16 @@ var CHAIN = Promise.resolve()
   var bsText = bs ? bs.textContent.trim() : '';
   T('A1: 展開しない外部の @import は先頭に集める（規則の後ろだと無効）', bsText.indexOf('@import url(https://fonts.googleapis.com') === 0,
     bsText.slice(0, 60));
+  // KOReader の位置の解決と空行の測定は _koParseChapter で読む。描画と同じ形でないと N 番目の兄弟がずれる
+  return state.epub.file(state.spine[0].absPath).async('text');
+})
+.then(function (x) {
+  var kd = _koParseChapter(x);
+  T('自己終端: _koParseChapter も同じ形に直す', kd.getElementById('hs').textContent === '' && kd.getElementById('anc').textContent === '');
+  var src = '<span class="a"/><br/><img src="x.png"/><svg><rect width="1"/></svg>';
+  T('自己終端: 単体（空要素はそのまま・svg の中も閉じる）',
+    expandSelfClosingTags(src) === '<span class="a"></span><br/><img src="x.png"/><svg><rect width="1"></rect></svg>',
+    expandSelfClosingTags(src));
 })
 
 // ══ 10: 生成元の判定・青空文庫の奥付 ═══════════════════════════════
