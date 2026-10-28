@@ -34,6 +34,17 @@ function em(id) { return px(cs(id).fontSize); }
 function near(a, b) { return Math.abs(a - b) <= 1; }
 function injected() { var s = idoc().getElementById('epub-viewer-inject'); return s ? s.textContent : ''; }
 
+// Safari の DOMParser は先頭に BOM（U+FEFF）のある XML を解析できない（Chrome は読み飛ばすので
+// このテストの Chrome では失敗が再現しない）。XML として渡される文字列に BOM が残っていないことを見張る
+var __xmlBom = [];
+(function () {
+  var orig = DOMParser.prototype.parseFromString;
+  DOMParser.prototype.parseFromString = function (str, type) {
+    if (/xml/.test(type) && String(str).charCodeAt(0) === 0xFEFF) __xmlBom.push(String(str).slice(1, 60));
+    return orig.call(this, str, type);
+  };
+})();
+
 localStorage.clear();
 var CHAIN = Promise.resolve()
 
@@ -67,6 +78,8 @@ var CHAIN = Promise.resolve()
 })
 .then(function () {
   T('10: AozoraEpub3 の本を判定できる', state.bookOrigin === 'aozoraepub3', state.bookOrigin);
+  T('BOM: BOM 付きの container.xml / OPF の本が開ける', state.bookTitle === 'テスト青空', state.bookTitle);
+  T('BOM: XML として解析する文字列に BOM を残さない', __xmlBom.length === 0, __xmlBom.join(' | '));
   T('10: 青空文庫の奥付から site を決める', state.bookSourceSite === '青空文庫', state.bookSourceSite);
   T('10: URL は作らない', state.bookSourceUrl === '', state.bookSourceUrl);
   T('10: 底本の段落と続く字下げの段落を読む',

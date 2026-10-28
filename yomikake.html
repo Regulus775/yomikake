@@ -3985,6 +3985,8 @@ document.body.addEventListener('drop', async e => {
   if (f && (f.name.endsWith('.epub') || f.name.endsWith('.kepub'))) loadEpub(f, fileHandle);
 });
 
+// 文字列の先頭の BOM を落とす（XML として読む前に。理由は loadEpub の container.xml の箇所）
+function stripBom(s) { return String(s || '').replace(/^\uFEFF/, ''); }
 async function loadEpub(file, fileHandle = null) {
   ttsStop();             // 前の本の読み上げを止める
   finalizeCurrentBook(); // 本を開いたまま別の本を開く経路でも旧本の位置と Drive 自動保存を確定（state はまだ旧本を指す）
@@ -4012,7 +4014,10 @@ async function loadEpub(file, fileHandle = null) {
     // container.xml → OPF path
     const containerEntry = zip.file('META-INF/container.xml');
     if (!containerEntry) throw new Error(t('err.noContainerXml'));
-    const cXml = await containerEntry.async('text');
+    // 先頭の BOM（U+FEFF）を落としてから XML として読む。JSZip は BOM を文字として残し、
+    // Chrome の DOMParser は読み飛ばすが Safari（WebKit）は「XML 宣言の前に文字がある」として解析に失敗する。
+    // AozoraEpub3 は container.xml を必ず BOM 付きで書くので、iPad / iPhone で開けなかった
+    const cXml = stripBom(await containerEntry.async('text'));
     const cDoc = new DOMParser().parseFromString(cXml, 'application/xml');
     const rootfileEl = cDoc.querySelector('rootfile');
     if (!rootfileEl) throw new Error(t('err.noRootfile'));
@@ -4023,7 +4028,7 @@ async function loadEpub(file, fileHandle = null) {
     // OPF
     const opfEntry = zip.file(state.opfPath);
     if (!opfEntry) throw new Error(t('err.noOpf', {path: state.opfPath}));
-    const opfXml = await opfEntry.async('text');
+    const opfXml = stripBom(await opfEntry.async('text'));
     const opfDoc = new DOMParser().parseFromString(opfXml, 'application/xml');
 
     // manifest

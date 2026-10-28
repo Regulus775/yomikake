@@ -314,7 +314,7 @@ KOReader の対応表（`epub_kosync_docs`）は本の中身からハッシュ�
 
 本を実際に開き、**iframe の中の計算済みスタイル・実寸**を測る（クラスの有無だけでは「規則は入ったのに効いていない」を取り逃がす）。
 
-実装済み: 両ファイル各 65 assertion。修正前のコードに流すと A1・A2〜A4 の項目が落ちることも確認した。
+実装済み: 両ファイル各 67 assertion。修正前のコードに流すと A1・A2〜A4 の項目が落ちることも確認した。
 
 - 判定: `ae3.epub` で `state.bookOrigin === 'aozoraepub3'`、`reflow.epub` で `''`
 - A1: `ebpaj-import.epub` で `a.css` の規則が効く・`screen` の規則が効く・`url()` が data URI になる・missing と循環で止まらない（描画が終わる）
@@ -331,6 +331,10 @@ KOReader の対応表（`epub_kosync_docs`）は本の中身からハッシュ�
 - 猫（1 ファイル 1.27MB）の描画時間が、A1 で変わっていないこと
 
 ---
+
+### 8-4. 実機で見つかった不具合（2026-10-28）
+
+- **iPad で AozoraEpub3 の本が開けない**（「container.xml に rootfile 要素がありません」）。AozoraEpub3 は `container.xml` を BOM 付きで書く（手元の 9 冊すべて。OPF には付かない）。JSZip の `async('text')` は BOM を U+FEFF として残し、Chrome の `DOMParser` は読み飛ばすが **Safari は XML 宣言の前の文字として解析に失敗する**。今回の変更による退行ではなく以前からの不具合（Chrome でしか試していなかった）。`container.xml` と OPF を `stripBom()` してから解析する。Chrome のテストでは失敗が再現しないので、`DOMParser.prototype.parseFromString` を包んで BOM が渡らないことを検査する
 
 ## 9. 後の弾に回したもの
 

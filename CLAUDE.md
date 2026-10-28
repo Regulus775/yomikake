@@ -152,7 +152,8 @@ Most features exist in both files. As a rule:
 - **暗いテーマ（A4）**: テーマは `html,body` の色しか変えないので、ePub が直書きしたリンク（`#00C`）・罫囲み（`#000`）・後書き（`#222`）が沈む。**青空文庫の本は目次ページが spine に入るので 2 ページ目が読めなかった**。紙の相対輝度 < 0.2（`isDarkPaper`・今は `dark` と `hoshi`）のときだけ文字色に揃える。明るいテーマでは出版元の色のまま
 - **青空文庫の奥付**: 最後の spine に「青空文庫作成ファイル」があれば `bookSourceSite='青空文庫'`、「底本：」とそれに続く字下げの段落を `bookAozoraSource` に（ヘルプに文字で出す）。**図書カードの URL は ePub に無いのでリンクは作らない**
 - **ファイル名（14）**: OPF に書名・著者が無いとき（空も含む）だけ `[作者名] 題名.epub` から補う。**OPF に値があれば使わない**（AozoraEpub3 はファイル名に使えない文字を落とす）。補う前のキーのしおりは `_rekeyBookmark` で移す。⚠ `dc:title` が空の要素だった本の旧キーは書名が空で衝突しうるので移さない
-- テストは `tests/cases/aozoraepub3.js`（両ファイル各 65 assertion・fixture `ae3` / `notae3` / `ebpaj-import` / `noopf` / `noopf-empty`）。**後の弾**（目次の項目単位の章送り・400KB 分割の本の話数など）は設計書 §9
+- **⚠ `container.xml` / OPF は `stripBom()` を通してから XML として読む。** AozoraEpub3 は `container.xml` を必ず BOM 付きで書き、JSZip は BOM を文字として残す。**Chrome の DOMParser は読み飛ばすが Safari は解析に失敗し、iPad / iPhone で AozoraEpub3 の本が 1 冊も開けなかった**（「container.xml に rootfile 要素がありません」）。Chrome のテストでは再現しないので、`aozoraepub3.js` は `DOMParser` を包んで「XML に BOM が渡らないこと」を見張っている
+- テストは `tests/cases/aozoraepub3.js`（両ファイル各 67 assertion・fixture `ae3` / `notae3` / `ebpaj-import` / `noopf` / `noopf-empty`）。**後の弾**（目次の項目単位の章送り・400KB 分割の本の話数など）は設計書 §9
 
 **本ごとの表示設定（v2.16.0・B-7）** (`BOOK_PREFS_KEY`, `_bpLoad`, `_bpSave`, `_bpPrune`, `_bpGet`, `_bpSet`, `_bpDelete`, `_bpClearAll`, `applyBookPrefs`, `_bpFontUsable`, `toggleBookPrefs`, `updateBookPrefsToggleUI`, `state.bookPrefsEnabled` — 設計書 `design_per_book_settings.md`)。
 

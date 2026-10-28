@@ -312,7 +312,9 @@ def build_ae3(path, ae3_ids=True):
     ae3_ids=False は同じ中身で manifest の id だけ違う本（判定が外れることの対照）。"""
     z = zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED)
     z.writestr('mimetype', 'application/epub+zip')
-    z.writestr('META-INF/container.xml', CONTAINER.replace('OEBPS/content.opf', 'OPS/package.opf'))
+    # AozoraEpub3 は container.xml を BOM 付きで書く（Safari の DOMParser はこれで解析に失敗していた）。
+    # OPF も BOM 付きにして、XML として読む 2 箇所とも見る
+    z.writestr('META-INF/container.xml', '\ufeff' + CONTAINER.replace('OEBPS/content.opf', 'OPS/package.opf'))
     for name, css in (('vertical_text.css', AE3_TEXT_CSS), ('vertical_font.css', AE3_FONT_CSS),
                       ('vertical_middle.css', AE3_MIDDLE_CSS), ('vertical_image.css', AE3_IMAGE_CSS),
                       ('vertical.css', AE3_CSS)):
@@ -366,7 +368,7 @@ def build_ae3(path, ae3_ids=True):
               '<item id="g1" href="images/gaiji-1.png" media-type="image/png"/>']
     refs = ['<itemref idref="%s" linear="yes"/>' % r for r in ('title-page', 'nav', 'sec0001', 'sec0002')]
     title = 'テスト青空' if ae3_ids else 'テスト青空（対照）'
-    z.writestr('OPS/package.opf', opf(title, '青空作者', items, refs))
+    z.writestr('OPS/package.opf', '\ufeff' + opf(title, '青空作者', items, refs))
     z.close()
 
 
