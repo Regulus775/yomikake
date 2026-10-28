@@ -165,6 +165,8 @@ novel_downloader が `nd:authorUrl`（例: なろうの mypage・カクヨムの
 - ブラウザ拡張（アドオン）は Android Chrome と iOS Safari で使えない（拡張が無い／App が要る）ので候補から外す。
 - 契約（要求・応答の形）を先に決めれば、1 と 2 は同じ yomikake のコードで使える。設計書 `design_update_check.md` で、実測（なろう公式 API の CORS など）から始める。
 
+→ **概要設計は `design_update_check.md`（2026-10-28）。** 実測で CORS は全滅（なろうの JSONP は安全上採らない）。「確かめる（G1）」と「取りに行く（G2）」に分け、窓口の要らない G2（共有シート・コピー・受信箱 → novel_downloader の「続きを取得」）を先に作る案。
+
 ## 8. 決定事項
 
 1. **著者で絞ったときは読了本を含める**（§5-1）。著者バーが出ている間だけ `showFinished` を無視する。

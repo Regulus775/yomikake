@@ -231,6 +231,39 @@ def build_webnovel(path):
     z.close()
 
 
+def build_grow(path, n_eps, toc_at_end=False):
+    """続きを追記した本の開き位置の検証用（yomikake/design_update_check.md §4-4）。
+    novel_downloader と同じ並び（表紙ページ・目次・ep*.xhtml・奥付。toc_at_end なら目次を奥付の後ろ）。
+    同じ題名・著者で話数だけ違う版を作り、追記の前後を模す。"""
+    z = zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED)
+    z.writestr('mimetype', 'application/epub+zip')
+    z.writestr('META-INF/container.xml', CONTAINER)
+
+    def page(name, title, body):
+        z.writestr('OEBPS/' + name,
+                   '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n'
+                   '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>%s</title></head>'
+                   '<body>%s</body></html>' % (title, body))
+    page('cover.xhtml', '表紙', '<h1>テスト用連載</h1>')
+    page('toc.xhtml', '目次', '<p>目次</p>')
+    page('colophon.xhtml', '奥付', '<p>奥付</p>')
+    eps = []
+    for i in range(n_eps):
+        name = 'ep%04d.xhtml' % (i + 1)
+        page(name, '第%d話' % (i + 1),
+             '<h1>第%d話</h1>' % (i + 1) + ''.join('<p>第%d話の本文。%02d</p>' % (i + 1, n) for n in range(20)))
+        eps.append(name)
+    order = ['cover.xhtml'] + ([] if toc_at_end else ['toc.xhtml']) + eps + ['colophon.xhtml'] \
+        + (['toc.xhtml'] if toc_at_end else [])
+    items = ['<item id="i%d" href="%s" media-type="application/xhtml+xml"/>' % (k, h) for k, h in enumerate(order)]
+    refs = ['<itemref idref="i%d"/>' % k for k in range(len(order))]
+    meta = ('<dc:source>https://kakuyomu.jp/works/9999999999</dc:source>'
+            '<meta property="nd:serialStatus">連載中</meta>')
+    title = 'テスト用連載（末尾目次）' if toc_at_end else 'テスト用連載'
+    z.writestr('OEBPS/content.opf', opf(title, '連載作者', items, refs, meta))
+    z.close()
+
+
 def main():
     out = os.path.normpath(OUT_DIR)
     os.makedirs(out, exist_ok=True)
@@ -239,7 +272,11 @@ def main():
                      ('fxl.epub', build_fxl),
                      ('blank.epub', build_blank),
                      ('blankweb.epub', build_blank_web),
-                     ('webnovel.epub', build_webnovel)):
+                     ('webnovel.epub', build_webnovel),
+                     ('grow3.epub', lambda p: build_grow(p, 3)),
+                     ('grow5.epub', lambda p: build_grow(p, 5)),
+                     ('growtoc3.epub', lambda p: build_grow(p, 3, toc_at_end=True)),
+                     ('growtoc5.epub', lambda p: build_grow(p, 5, toc_at_end=True))):
         p = os.path.join(out, name)
         fn(p)
         print('%s (%d bytes)' % (p, os.path.getsize(p)))
