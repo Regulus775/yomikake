@@ -141,11 +141,23 @@ T('_posAtEnd: 非オブジェクト', _posAtEnd(null) === false && _posAtEnd('x'
 
 // 6-6. 分母は位置の勝者から採る（§3-C の回帰・_rdMergePosBest のみ）
 put('M5', { spineIdx: 5, ratio: 0.3, spineCount: 24, lastOpenedAt: FA });
-_rdMergePosBest(K('M5'), { spineIdx: 19, ratio: 1.0, spineCount: 20, lastOpenedAt: FB,
-                           finishedAt: FB, finishedCount: 20 });
-T('_rdMergePosBest: spineCount は位置の勝者から', got('M5').spineCount === 20, String(got('M5').spineCount));
-T('_rdMergePosBest: 分母がズレず読了になる', item('M5').atEnd && item('M5').finished);
+_rdMergePosBest(K('M5'), { spineIdx: 12, ratio: 0.5, spineCount: 20, lastOpenedAt: FB });
+T('_rdMergePosBest: spineCount は位置の勝者から', got('M5').spineIdx === 12 && got('M5').spineCount === 20,
+  JSON.stringify([got('M5').spineIdx, got('M5').spineCount]));
 localStorage.removeItem(K('M5'));
+// 6-6b. 前の版（20 章）で読み終えた位置は、続きを足した版（24 章）の位置に勝たない
+// （design_update_check.md §4-6）。前の版の末尾は新しい版では増えた話の途中・末尾にあたる。
+// 読了の記録は合流するので「読了・続き 4 章」になる
+put('M5b', { spineIdx: 5, ratio: 0.3, spineCount: 24, lastOpenedAt: FA });
+_rdMergePosBest(K('M5b'), { spineIdx: 19, ratio: 1.0, spineCount: 20, lastOpenedAt: FB,
+                            finishedAt: FB, finishedCount: 20 });
+T('_rdMergePosBest: 前の版の読了位置は新しい版の位置に勝たない（位置と分母は新しい版のまま）',
+  got('M5b').spineIdx === 5 && got('M5b').ratio === 0.3 && got('M5b').spineCount === 24,
+  JSON.stringify(got('M5b')));
+T('_rdMergePosBest: 読了の記録は合流し「読了・続き 4 章」になる',
+  item('M5b').finished && !item('M5b').atEnd && item('M5b').newCh === 4 && item('M5b').hasMore,
+  JSON.stringify(item('M5b')));
+localStorage.removeItem(K('M5b'));
 
 // 6-7. ローカルのほうが進んでいれば位置は守られる（サイレント同期の後退防止）
 put('M6', { spineIdx: 12, ratio: 0.5, spineCount: 20, lastOpenedAt: FB });

@@ -9,6 +9,7 @@ function openFixture(name) {
     .then(function (r) { return r.blob(); })
     .then(function (b) { return loadEpub(new File([b], name, { type: 'application/epub+zip' })); });
 }
+var remoteOld = null, remoteReading = null;
 function hrefAt(i) { return (state.spine[i] || {}).href || ''; }
 function shareBtn() { return document.querySelector('#finished-body [onclick="finishedShareUrl()"]'); }
 // 末尾で次へを押したのと同じ状態（呼び出し元は savePos(1.0) → showFinishedBanner）
@@ -84,6 +85,67 @@ openFixture('grow3.epub')
   localStorage.setItem(key, JSON.stringify(Object.assign({}, m, { start: 7 })));
   _rdMergePos(key, JSON.stringify(m));
   T('同期で手元の start を消さない', (JSON.parse(localStorage.getItem(key)) || {}).start === 7);
+  // ══ §4-6 前の版で読み終えた別端末のしおりが同期で届く ══
+  localStorage.clear();
+  return openFixture('grow3.epub');
+})
+.then(function () {
+  state.currentSpineIdx = 3; savePos(0.5);                         // 別端末その 1: 前の版の第2話の途中
+  remoteReading = Object.assign({}, loadSavedPos(), { lastOpenedAt: '2099-01-01T00:00:00Z' });
+  state.currentSpineIdx = state.spine.length - 1; savePos(1.0);     // 別端末その 2: 前の版の奥付で読了
+  remoteOld = Object.assign({}, loadSavedPos(), { lastOpenedAt: '2099-01-01T00:00:00Z' });
+  T('しおりの形式は変えない（項目を足さない）', !('tail' in remoteOld), JSON.stringify(remoteOld));
+  return openFixture('grow5.epub');
+})
+.then(function () {
+  var key = state.bookKey, cur = state.currentSpineIdx;
+  T('（前提）第4話の先頭で開いている', /ep0004\.xhtml$/.test(hrefAt(cur)));
+  _rdMergePosBest(key, JSON.stringify(remoteOld));
+  var m = JSON.parse(localStorage.getItem(key));
+  T('前の版で読み終えた位置は、新しい版の位置に勝たない（増えた話の末尾へ飛ばさない）',
+    m.spineIdx === cur && m.ratio === 0, JSON.stringify([m.spineIdx, m.ratio, cur]));
+  T('位置と章数の出所を揃える（今の版の章数）', m.spineCount === state.spine.length, m.spineCount);
+  // 新しい話を読み進めている途中でも、前の版の奥付には負けない
+  localStorage.setItem(key, JSON.stringify(Object.assign({}, m, { spineIdx: cur, ratio: 0.5 })));
+  _rdMergePosBest(key, JSON.stringify(remoteOld));
+  m = JSON.parse(localStorage.getItem(key));
+  T('第4話の途中は前の版の奥付より先', m.spineIdx === cur && m.ratio === 0.5, JSON.stringify([m.spineIdx, m.ratio]));
+  // 同じ版で本当に先にいる別端末には従う（読み替えは版が違うときだけ）
+  var ahead = Object.assign({}, m, { spineIdx: cur + 1, ratio: 0.3, lastOpenedAt: '2099-01-01T00:00:00Z' });
+  _rdMergePosBest(key, JSON.stringify(ahead));
+  m = JSON.parse(localStorage.getItem(key));
+  T('同じ版で先にいる別端末の位置は採る', m.spineIdx === cur + 1 && m.ratio === 0.3);
+  // 逆向き: こちらが前の版で読了・別端末が新しい版のずっと前の方 → 手元の読了位置を保つ（後退させない）。
+  // 新しい版を開けば §4-4 が増えた最初の話から開く
+  var mine = Object.assign({}, remoteOld, { lastOpenedAt: '2000-01-01T00:00:00Z' });
+  localStorage.setItem(key, JSON.stringify(mine));
+  _rdMergePosBest(key, JSON.stringify(Object.assign({}, m, { spineIdx: 1, ratio: 0.2, lastOpenedAt: '2099-01-02T00:00:00Z' })));
+  m = JSON.parse(localStorage.getItem(key));
+  T('手元が前の版で読了なら、新しい版の前の方の位置へ戻さない（同期で後退させない）',
+    m.spineIdx === mine.spineIdx && m.ratio === mine.ratio && m.spineCount === mine.spineCount,
+    JSON.stringify([m.spineIdx, m.ratio, m.spineCount]));
+  m = Object.assign({}, m, { spineIdx: cur, ratio: 0, spineCount: state.spine.length });
+  // 前の版で読みかけ（読み終えていない）なら今までどおり比べる。最後の話までは番号が変わらない
+  localStorage.setItem(key, JSON.stringify(Object.assign({}, m, { spineIdx: 2, ratio: 0.1, lastOpenedAt: '2000-01-01T00:00:00Z' })));
+  _rdMergePosBest(key, JSON.stringify(remoteReading));
+  m = JSON.parse(localStorage.getItem(key));
+  T('前の版で読みかけの位置は比べて先なら採る（章数は位置と組で前の版の値）',
+    m.spineIdx === 3 && m.ratio === 0.5 && m.spineCount === remoteReading.spineCount,
+    JSON.stringify([m.spineIdx, m.ratio, m.spineCount]));
+  localStorage.clear();
+  return openFixture('growtoc3.epub');
+})
+.then(function () {
+  state.currentSpineIdx = state.spine.length - 1; savePos(1.0);     // 末尾の目次まで読み終えた
+  remoteOld = Object.assign({}, loadSavedPos(), { lastOpenedAt: '2099-01-01T00:00:00Z' });
+  return openFixture('growtoc5.epub');
+})
+.then(function () {
+  var cur = state.currentSpineIdx;
+  _rdMergePosBest(state.bookKey, JSON.stringify(remoteOld));
+  var m = loadSavedPos();
+  T('末尾目次の本でも前の版で読み終えた位置に移らない', m.spineIdx === cur && m.ratio === 0
+    && /ep0004\.xhtml$/.test(hrefAt(cur)), JSON.stringify([m.spineIdx, m.ratio, cur]));
   // ══ §4-3 読了パネルの共有ボタン ══
   return openFixture('webnovel.epub');
 })

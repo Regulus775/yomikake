@@ -67,7 +67,7 @@ finished: spineIdx >= spineCount - 1 && ratio > 0.9,  // 最終章かつ ratio >
 | 経路 | 関数 | 位置の決め方 |
 |------|------|-------------|
 | 手動 Drive 読込 / JSON インポート | `_rdMergePos`（9424 / 9190） | **リモートを無条件採用**（ユーザーが confirm 済みなので） |
-| 自動保存 ON のサイレント同期 | `_rdMergePosBest`（9768 / 9531） | 進捗 `spineIdx + ratio` が大きい方。同点なら `lastOpenedAt` が新しい方 |
+| 自動保存 ON のサイレント同期 | `_rdMergePosBest`（9768 / 9531） | 進捗 `spineIdx + ratio` が大きい方。同点なら `lastOpenedAt` が新しい方。**ただし取り込んだしおりが章数の少ない版で読み終えた位置なら、章数の多い版の手元の位置を採る**（v2.33.1・`design_update_check.md` §4-6） |
 
 どちらも位置としてはリモートの読了位置を採る。**したがって「本を開いていない状態」で同期した
 場合は、現状でも読了になる。** 問題は「本を開いている」場合と、分母がずれた場合である。
@@ -717,8 +717,12 @@ i18n は `readingList.filterReady` の隣に `readingList.filterHasMore` を 4 �
   `finishedCount = remote.spineCount`（§S3）
 - **補完しない**: 両側とも途中 → 読了フィールドが付かない
 - **`finishedAt` は最古 / `finishedCount` は最大**: 両側にある場合の合流則（§4-6）
-- **分母**: `_rdMergePosBest` に local `spineCount:24` / remote `spineCount:20, spineIdx:19`
-  → `merged.spineCount === 20` かつ `finished === true`（§3-C の回帰テスト）
+- **分母**: `_rdMergePosBest` に local `spineCount:24` / remote `spineCount:20, spineIdx:12`
+  → 位置も `merged.spineCount === 20` も remote から（§3-C の回帰テスト）。
+  ⚠ v2.33.1 で書き換えた。以前は remote を `spineIdx:19`（20 章の版の読了位置）にして remote を採る
+  ことを期待していたが、前の版の末尾は続きを足した版では増えた話の途中・末尾にあたる（同期で増えた話の
+  末尾へ飛ぶ不具合そのもの）。この組み合わせは 6-6b で「手元の位置・分母 24 のまま、読了の記録は合流して
+  『読了・続き 4 章』」を確かめる（`design_update_check.md` §4-6）
 - **`_rdMergePosBest` でも上記 4 点が同じ結果になる**
 
 ### 8-4. UI

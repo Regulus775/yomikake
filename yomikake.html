@@ -13554,9 +13554,19 @@ function _rdMergePosBest(key, remoteRaw) {
   try { local = JSON.parse(localStorage.getItem(key)); } catch (e) {}
   if (!local || typeof local !== 'object') { _rdMergePos(key, remoteRaw); return; } // ローカル無し → リモート採用
   const prog = o => (typeof o.spineIdx === 'number' ? o.spineIdx : 0) + (typeof o.ratio === 'number' ? o.ratio : 0);
+  // 章数の少ない（前の）版で読み終えた位置は、章数の多い（続きを足した）版で記録された位置には
+  // 勝たない（design_update_check.md §4-6）。前の版の末尾まで読んだことは、増えた部分のどこに
+  // いるかを何も語らない。番号＋割合で比べると、前の版の奥付（100%）が同じ番号に差し込まれた
+  // 「増えた最初の話」より先と判定され、同期で増えた話の末尾へ飛ばしていた。
+  // 読了の記録（finishedAt / finishedCount）は下で別に合流するので消えない。
+  // 取り込む側（remote）だけに効かせる。逆向き（手元が前の版で読了）に効かせると、手元の読了位置を
+  // 別端末の前の方の位置へ黙って戻す — 同期で位置を後退させない約束に反する。前の版の端末は
+  // 自分の読了位置を保ち、新しい版を開いたときに _grownStartIdx が増えた最初の話から開く（§4-4）
+  const lsc = +local.spineCount || 0, rsc = +remote.spineCount || 0;
   const lp = prog(local), rp = prog(remote);
   let base;
-  if (rp > lp + 1e-9) base = remote;
+  if (lsc && rsc && rsc < lsc && _posAtEnd(remote)) base = local;
+  else if (rp > lp + 1e-9) base = remote;
   else if (lp > rp + 1e-9) base = local;
   else base = (Date.parse(remote.lastOpenedAt) || 0) >= (Date.parse(local.lastOpenedAt) || 0) ? remote : local;
   const merged = { ...local, ...remote, spineIdx: base.spineIdx, ratio: base.ratio, lastOpenedAt: base.lastOpenedAt };
