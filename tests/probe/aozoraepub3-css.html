@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AozoraEpub3 の CSS の実測</title>
+<style>
+  body { font:16px/1.7 system-ui,-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;
+         margin:0; padding:16px; background:#FDF8F0; color:#222; }
+  h1 { font-size:18px; margin:0 0 8px; }
+  h2 { font-size:15px; margin:24px 0 6px; }
+  .note { font-size:13px; color:#555; background:#fff; border:1px solid #ddd;
+          border-radius:6px; padding:10px 12px; margin:0 0 16px; }
+  table { border-collapse:collapse; background:#fff; font-size:13px; }
+  th,td { border:1px solid #ddd; padding:4px 10px; text-align:left;
+          font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  th { background:#efe9df; }
+  .ng { background:#fde8e4; font-weight:bold; }
+  .ok { background:#e6f4e6; }
+  iframe { display:block; width:100%; height:380px; border:1px solid #ccc; background:#fff; }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; }
+  #ua { font-size:12px; color:#555; word-break:break-all; }
+</style>
+</head>
+<body>
+
+<h1>AozoraEpub3 の CSS の実測</h1>
+
+<div class="note">
+  <b>何を測るか</b>（設計書 <code>design_aozoraepub3.md</code>）<br>
+  [A] AozoraEpub3 は縦中横を <code>.tcy span { text-combine: horizontal }</code>（＋ <code>-webkit-</code> / <code>-epub-</code>）という
+  <b>古い書き方だけ</b>で書いている。今の標準の <code>text-combine-upright</code> が無い。どのブラウザで効くかを数字で見る。<br>
+  [B]〜[D] AozoraEpub3 の CSS は字下げ・字上げ・傍線などを <b>縦書き前提の物理プロパティ</b>（<code>margin-top</code> /
+  <code>border-right</code> など）で書いている。yomikake の「横書き」モードで強制的に横組みにすると崩れる。補正の効き目を目で見る。<br>
+  [E]〜[F] yomikake のダーク系テーマは <code>html,body</code> の文字色しか変えないので、ePub が色を指定した要素（リンク・罫囲み・前書き/後書き）が背景に沈む。<br><br>
+  <b>手順</b>: このページを開き、[A] の表と [B]〜[F] の見た目を、<b>PC Chrome・PC Firefox・Android Chrome・iPhone/iPad Safari</b> で
+  スクリーンショットに撮ってください。各ブロックの <code>[A]</code> などの札で見分けます。
+</div>
+<div id="ua"></div>
+
+<h2>[A] 縦中横の書き方ごとの効き方</h2>
+<table id="tcy">
+  <tr><th>札</th><th>書き方</th><th>高さ / 1em</th><th>判定</th></tr>
+</table>
+<div id="supports" style="font-size:12px;margin-top:4px"></div>
+
+<h2>[B] 縦書き（AozoraEpub3 本来の見え方・基準）</h2>
+<iframe id="fB"></iframe>
+<h2>[C] 横書きを強制・補正なし（今の yomikake の「横書き」）</h2>
+<iframe id="fC"></iframe>
+<h2>[D] 横書きを強制・補正あり</h2>
+<iframe id="fD"></iframe>
+<h2>[E] ダーク・補正なし（縦書き）</h2>
+<iframe id="fE"></iframe>
+<h2>[F] ダーク・補正あり（縦書き）</h2>
+<iframe id="fF"></iframe>
+
+<script>
+document.getElementById('ua').textContent = navigator.userAgent;
+
+// ── [A] 縦中横 ─────────────────────────────────────────
+var TCY = [
+  ['A1', 'AozoraEpub3 そのまま（text-combine / -webkit- / -epub-）',
+   'text-combine:horizontal;-webkit-text-combine:horizontal;-epub-text-combine:horizontal;'],
+  ['A2', '-webkit-text-combine だけ', '-webkit-text-combine:horizontal;'],
+  ['A3', '標準 text-combine-upright:all', 'text-combine-upright:all;'],
+  ['A4', '指定なし（対照）', '']
+];
+(function(){
+  var box = document.createElement('div');
+  box.style.cssText = 'writing-mode:vertical-rl;font-size:20px;height:200px;position:absolute;left:-9999px;top:0';
+  document.body.appendChild(box);
+  var tbl = document.getElementById('tcy');
+  TCY.forEach(function(c){
+    var s = document.createElement('span'); s.textContent = '37';
+    s.setAttribute('style', c[2]);
+    var p = document.createElement('p'); p.appendChild(s); box.appendChild(p);
+    var h = s.getBoundingClientRect().height / 20;
+    var ok = h <= 1.1;
+    var tr = tbl.insertRow();
+    tr.innerHTML = '<td>[' + c[0] + ']</td><td></td><td>' + h.toFixed(2) + '</td><td class="' + (ok ? 'ok' : 'ng') + '">' +
+      (ok ? '1 文字に収まる' : '収まらない（縦中横になっていない）') + '</td>';
+    tr.cells[1].textContent = c[1];
+  });
+  var sup = function(p, v){ try { return CSS.supports(p, v); } catch(e){ return 'err'; } };
+  document.getElementById('supports').textContent =
+    'CSS.supports: text-combine=' + sup('text-combine','horizontal') +
+    ' / -webkit-text-combine=' + sup('-webkit-text-combine','horizontal') +
+    ' / text-combine-upright=' + sup('text-combine-upright','all');
+})();
+
+// ── [B]〜[F] 見本 ───────────────────────────────────────
+// AozoraEpub3 の vertical.css / vertical_font.css から該当部分を抜粋（実物の書き方のまま）
+var AE3_CSS = [
+  'p{text-align:justify;margin:0}',
+  ':link{color:#00C}:visited{color:#609}',
+  '.border{border:1px solid #000;margin:.25em;padding:.25em;display:inline-block}',
+  'span.sesame{text-emphasis-style:sesame;-webkit-text-emphasis-style:sesame}',
+  'span.underline{border-right-width:1px;padding-right:1px;border-right-style:solid}',
+  'span.left_underline{border-left-style:solid;padding-left:1px;border-left-width:1px}',
+  '.font3,.chap2{font-size:130%}.kogaki{font-size:70%}',
+  '.tcy span{text-combine:horizontal;-webkit-text-combine:horizontal}',
+  'span.wrc{display:inline-block;font-size:.6em;line-height:1em;vertical-align:middle;padding:.2em 0 .1em 0;position:relative;left:-.4em}',
+  '.sub{vertical-align:sub;font-size:.66em}',
+  'div.pt2{margin-top:2em}div.pt8{margin-top:8em}div.pb2{margin-bottom:2em}',
+  'div.btm,div.btm p{text-align:right}',
+  'div.jzm10{max-height:10em}',
+  'span.fullsp{padding-top:.5em}',
+  '.introduction{float:right;font-size:83%;border-top:3px solid #aaa;color:#555;margin:.25em;margin-right:1em;padding:1em .5em;display:inline-block;height:70%}',
+  '.postscript{float:right;font-size:83%;border-top:3px solid #888;color:#222;margin:.25em;margin-right:2em;padding:1em .5em;display:inline-block;height:70%}',
+  'div.clear{clear:both}'
+].join('\n');
+
+var BODY =
+  '<div class="introduction">前書き：作者からのお知らせ（#555）</div><div class="clear"></div>' +
+  '<div class="pt8"><div class="chap2">一</div></div><p><br></p>' +
+  '<p>　吾輩は<span class="sesame">猫</span>である。名前は<span class="underline">まだ無い</span>。' +
+  '<span class="tcy"><span>37</span></span>歳<span class="tcy"><span>!?</span></span><span class="fullsp"> </span>次の文。</p>' +
+  '<p>　H<span class="sub">2</span>O と小書きの<span class="kogaki">ん</span>、左傍線<span class="left_underline">ここ</span>、' +
+  '割注<span class="wrc">割注の中身<br>二行目</span>のあと。</p>' +
+  '<div class="pt2"><p>ここから二字下げの段落。折り返したときも二字下がっているかを見るため、長めの文を置いておく。長めの文を置いておく。</p></div>' +
+  '<div class="jzm10"><p>十字詰めの段落。ここは十字で折り返すはず。十字で折り返すはず。</p></div>' +
+  '<div class="btm pb2"><p>地から二字上げ</p></div>' +
+  '<p><span class="border">罫囲み</span>　<a href="#x">リンク</a></p>' +
+  '<div class="postscript">後書き：あとがき（#222）</div>';
+
+// 横書きの補正（実装予定のものと同じ考え方: 物理の上下を論理の行頭・行末へ置き換える）
+var H_FIX = (function(){
+  var r = [];
+  for (var n = 1; n <= 30; n++) r.push('div.pt' + n + '{margin-top:0!important;margin-inline-start:' + n + 'em!important}');
+  for (var n2 = 1; n2 <= 25; n2++) r.push('div.pb' + n2 + '{margin-bottom:0!important;margin-inline-end:' + n2 + 'em!important}');
+  for (var n3 = 1; n3 <= 40; n3++) r.push('div.jzm' + n3 + '{max-height:none!important;max-width:' + n3 + 'em!important}');
+  r.push('span.underline{border-right:0!important;padding-right:0!important;border-bottom:1px solid currentColor!important;padding-bottom:1px!important}');
+  r.push('span.left_underline{border-left:0!important;padding-left:0!important;border-top:1px solid currentColor!important;padding-top:1px!important}');
+  r.push('span.fullsp,.half_em_space{padding-top:0!important;padding-inline-start:.5em!important}');
+  r.push('span.wrc{left:auto!important}');
+  r.push('.gaiji img{left:auto!important}');
+  r.push('.introduction,.postscript{float:none!important;height:auto!important;margin-right:0!important;display:block!important}');
+  return r.join('\n');
+})();
+
+var DARK = 'html,body{background:#111!important;color:#e8e8e8!important}';
+var DARK_FIX = [
+  'a:link,a:visited,a:active{color:inherit!important}',
+  '.border,.dashed_border,.custom_parameter_block{border-color:currentColor!important;box-shadow:none!important}',
+  '.introduction,.postscript{color:inherit!important;opacity:.8}',
+  '.gaiji img{filter:invert(1)}'
+].join('\n');
+
+var VERT = 'html{writing-mode:vertical-rl;height:100%}body{margin:8px;height:calc(100% - 16px);font-size:18px;line-height:1.75}';
+var HORI = 'html,body{writing-mode:horizontal-tb!important}body{margin:8px;font-size:18px;line-height:1.75}';
+
+function doc(css){
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' + AE3_CSS + '</style><style>' + css +
+    '</style></head><body>' + BODY + '</body></html>';
+}
+document.getElementById('fB').srcdoc = doc(VERT);
+document.getElementById('fC').srcdoc = doc(HORI);
+document.getElementById('fD').srcdoc = doc(HORI + '\n' + H_FIX);
+document.getElementById('fE').srcdoc = doc(VERT + '\n' + DARK);
+document.getElementById('fF').srcdoc = doc(VERT + '\n' + DARK + '\n' + DARK_FIX);
+</script>
+</body>
+</html>
