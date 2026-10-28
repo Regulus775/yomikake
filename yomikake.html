@@ -1848,6 +1848,8 @@ const I18N = {
     'help.readOnSite':      '{site}で読む',
     'help.readOnAozora':    '青空文庫の図書カード',
     'help.sourceIsbn':      '底本：ISBN {isbn}',
+    'help.fromAozora':      '青空文庫の本',
+    'help.madeWith':        '作成：{tool}',
     'help.searchAuthor':    'この著者の作品を検索',
     'help.searchIsbn':      '書誌を検索（国立国会図書館サーチ）',
     'role.aut':             '著者',
@@ -2343,6 +2345,8 @@ const I18N = {
     'help.readOnSite':      'Read on {site}',
     'help.readOnAozora':    'Aozora Bunko library card',
     'help.sourceIsbn':      'Source: ISBN {isbn}',
+    'help.fromAozora':      'From Aozora Bunko',
+    'help.madeWith':        'Made with {tool}',
     'help.searchAuthor':    'Search this author’s works',
     'help.searchIsbn':      'Look up (NDL Search)',
     'role.aut':             'Author',
@@ -2838,6 +2842,8 @@ const I18N = {
     'help.readOnSite':      '前往 {site} 閱讀',
     'help.readOnAozora':    '青空文庫圖書卡',
     'help.sourceIsbn':      '底本：ISBN {isbn}',
+    'help.fromAozora':      '青空文庫的書',
+    'help.madeWith':        '製作：{tool}',
     'help.searchAuthor':    '搜尋此作者的作品',
     'help.searchIsbn':      '查詢書目（NDL Search）',
     'role.aut':             '作者',
@@ -3333,6 +3339,8 @@ const I18N = {
     'help.readOnSite':      '前往 {site} 阅读',
     'help.readOnAozora':    '青空文库图书卡',
     'help.sourceIsbn':      '底本：ISBN {isbn}',
+    'help.fromAozora':      '青空文库的书',
+    'help.madeWith':        '制作：{tool}',
     'help.searchAuthor':    '搜索此作者的作品',
     'help.searchIsbn':      '查询书目（NDL Search）',
     'role.aut':             '作者',
@@ -3726,6 +3734,8 @@ const state = {
   // 読了パネル（design_finished_next.md）: シリーズ名（巻を除く・次の巻の検索用）/
   // novel_downloader が ePub を作った日時（手元情報の鮮度。nd:* を持つ本だけ）
   bookSeriesName:'', bookSeriesVol:'', bookGeneratedAt:'', bookAuthorUrl:'',
+  // 生成元（'aozoraepub3' か ''）/ 青空文庫の奥付の底本（文字。URL は ePub に無い）。design_aozoraepub3.md §2
+  bookOrigin:'', bookAozoraSource:'',
   // 書誌v3（配信元メタデータ）: 副題 / 共通ジャンル / ジャンル原文 / 連載状態 / タグ /
   // サイト側の総話数 / 総文字数 / サイト更新日 / 対象年齢。すべて表示専用。
   // このうち bookGenre と bookSerial だけを本棚の絞り込み用に localStorage へ保存する。
@@ -4026,6 +4036,10 @@ async function loadEpub(file, fileHandle = null) {
         absPath: state.opfDir + item.getAttribute('href'),
       };
     });
+    // 生成元（design_aozoraepub3.md §2）。AozoraEpub3（とそのフォーク）はテンプレートが違っても
+    // manifest に id v_text / v_font の CSS を必ず持つ。手元の 43 冊でこれ以外の本は 1 冊も該当しない。
+    // A2〜A4 の補正はクラス名で書き換えるので、この判定で AozoraEpub3 の本に限る
+    state.bookOrigin = (hasOwnKey(state.manifest, 'v_text') && hasOwnKey(state.manifest, 'v_font')) ? 'aozoraepub3' : '';
 
     // spine + itemref properties（FXL のページ見開き判定用）
     state.spine = [];
@@ -4126,6 +4140,14 @@ async function loadEpub(file, fileHandle = null) {
       try { state.bookSourceUrl = await resolveSourceFromSpine(); } catch(e) {}
     }
     state.bookSourceSite = state.bookSourceUrl ? siteNameFromUrl(state.bookSourceUrl) : '';
+    // 青空文庫を AozoraEpub3 で変換した本は、末尾に底本・入力・校正の奥付を <p> のまま持つ（URL は無い）
+    state.bookAozoraSource = '';
+    if (state.bookOrigin === 'aozoraepub3' && !state.bookSourceUrl && !state.bookSourceIsbn) {
+      try {
+        const col = await _aozoraColophon();
+        if (col) { state.bookSourceSite = '青空文庫'; state.bookAozoraSource = col.source; }
+      } catch(e) {}
+    }
     // 配信元メタデータ（novel_downloader v2.4.0 以降）。無い本では全部空のまま
     state.bookSubtitle      = _subtitleFromOpf(opfDoc);
     state.bookGenre         = _ndMeta(opfDoc, 'genre');
@@ -11226,6 +11248,7 @@ function closeBook() {
   state.bookTags = []; state.bookEpisodeCount = 0; state.bookCharCount = 0;
   state.bookSourceUpdated = ''; state.bookAudience = '';
   state.bookSeriesName = ''; state.bookSeriesVol = ''; state.bookGeneratedAt = ''; state.bookAuthorUrl = ''; state.bookStartOffset = 0;
+  state.bookOrigin = ''; state.bookAozoraSource = '';
   state.bookKey = ''; state.publisherAxis = null;
   state.renderMode = 'reflow'; state.fxlPpd = 'ltr';
   state.fxlPairs = null; state.currentPairIdx = 0;
@@ -12396,6 +12419,27 @@ function _parseRoledPeople(opfDoc, tag) {
 }
 function _parseCreatorsRoled(opfDoc) { return _parseRoledPeople(opfDoc, 'creator'); }
 // dc:source が無い既存 ePub 向け: colophon → 先頭 spine の本文から最初の外部リンクを回収
+// 青空文庫の奥付（AozoraEpub3 は最後の spine に <p> のまま出す）。「青空文庫作成ファイル」を含めば
+// 青空文庫の本とみなし、「底本：」の段落と、それに続く字下げの段落（発行年など）を最大 3 段落・200 字で返す。
+// 図書カードの URL は ePub に入らないので返さない（design_aozoraepub3.md §2-3）
+async function _aozoraColophon() {
+  const last = state.spine[state.spine.length - 1];
+  const f = last && state.epub && state.epub.file(last.absPath);
+  if (!f) return null;
+  const doc = new DOMParser().parseFromString(await f.async('text'), 'text/html');
+  const ps = [...doc.querySelectorAll('p')].map(p => p.textContent.replace(/\s+$/, ''));
+  if (!ps.some(s => s.indexOf('青空文庫作成ファイル') >= 0)) return null;
+  const i = ps.findIndex(s => /^\s*底本：/.test(s));
+  const parts = [];
+  if (i >= 0) {
+    parts.push(ps[i].trim());
+    for (let k = i + 1; k < ps.length && parts.length < 3 && /^[\s　]/.test(ps[k]); k++) parts.push(ps[k].trim());
+  }
+  let source = parts.join(' ');
+  if (source.length > 200) source = source.slice(0, 199) + '…';
+  return { source };
+}
+
 async function resolveSourceFromSpine() {
   if (!state.epub) return '';
   const paths = [];
@@ -13895,11 +13939,15 @@ function _helpCreatorsHtml() {
 // 書誌ブロック: 制作クレジット（制作・印刷・発売元。O'Reilly 等の dc:contributor）
 function _helpProductionHtml() {
   const prod = (state.bookContributorsRoled || []).filter(c => ROLE_PRODUCTION.indexOf(c.role) >= 0);
-  if (!prod.length) return '';
+  // 生成元（design_aozoraepub3.md §2-2）。どの補正が効いているかを知る手がかり
+  const tool = state.bookOrigin === 'aozoraepub3' ? 'AozoraEpub3' : '';
+  if (!prod.length && !tool) return '';
   const parts = prod.map(c =>
     '<span style="display:inline-block;margin-right:10px;white-space:nowrap;">'
     + '<span style="opacity:.7;margin-right:3px;">' + esc(t(ROLE_KEY[c.role] || 'role.bkp')) + '</span>'
     + esc(c.name) + '</span>');
+  if (tool) parts.push('<span style="display:inline-block;margin-right:10px;white-space:nowrap;">'
+    + esc(t('help.madeWith', {tool})) + '</span>');
   return '<p style="font-size:11px;opacity:.5;margin-top:6px;line-height:1.9;">' + parts.join('') + '</p>';
 }
 // 刊行日（年・年月・年月日の粒度に対応）
@@ -14032,6 +14080,9 @@ function _helpSourceHtml() {
         + '" target="_blank" rel="noopener" title="' + esc(t('help.searchIsbn'))
         + '" style="text-decoration:none;">🔍</a>';
   }
+  // 青空文庫を AozoraEpub3 で変換した本: 図書カードの URL が無いので底本を文字で出す
+  if (!src && state.bookAozoraSource) src = '📖 ' + esc(t('help.fromAozora')) + '　' + esc(state.bookAozoraSource);
+  else if (!src && state.bookSourceSite === '青空文庫') src = '📖 ' + esc(t('help.fromAozora'));
   // 作者ページは底本の行に並べる（底本の無い本でも単独で出す）
   const author = state.bookAuthorUrl ? _helpLink(state.bookAuthorUrl, '👤 ' + _authorPageLabel()) : '';
   if (!src) return author ? '<p>' + author + '</p>' : '';

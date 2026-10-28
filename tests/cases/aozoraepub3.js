@@ -55,6 +55,43 @@ var CHAIN = Promise.resolve()
   T('A1: コメントの中の @import は展開しない（evil.css は無い）', css.indexOf('evil') < 0);
 })
 
+// ══ 10: 生成元の判定・青空文庫の奥付 ═══════════════════════════════
+.then(function () {
+  T('10: AozoraEpub3 でない本は空', state.bookOrigin === '', state.bookOrigin);
+  return openFixture('ae3.epub');
+})
+.then(function () {
+  T('10: AozoraEpub3 の本を判定できる', state.bookOrigin === 'aozoraepub3', state.bookOrigin);
+  T('10: 青空文庫の奥付から site を決める', state.bookSourceSite === '青空文庫', state.bookSourceSite);
+  T('10: URL は作らない', state.bookSourceUrl === '', state.bookSourceUrl);
+  T('10: 底本の段落と続く字下げの段落を読む',
+    /^底本：「テスト全集1」テスト文庫、テスト書房 1987（昭和62）年9月29日第1刷発行$/.test(state.bookAozoraSource),
+    state.bookAozoraSource);
+  T('10: 底本の親本は含めない', state.bookAozoraSource.indexOf('親本') < 0);
+  var saved = JSON.parse(localStorage.getItem(state.bookKey) || '{}');
+  T('10: しおりの site に青空文庫を書く', saved.site === '青空文庫' && !saved.source, JSON.stringify({site: saved.site, source: saved.source}));
+  // ヘルプの書誌ブロック（4 言語）
+  var langs = ['ja', 'en', 'zh-TW', 'zh-CN'], ok = true, detail = '';
+  langs.forEach(function (lg) {
+    setLang(lg); updateHelpContent();
+    var html = document.getElementById('modal-body').innerHTML;
+    var good = html.indexOf('AozoraEpub3') >= 0 && html.indexOf(esc(t('help.fromAozora'))) >= 0 && html.indexOf('テスト全集') >= 0;
+    if (!good) { ok = false; detail += lg + ' '; }
+  });
+  setLang('ja');
+  T('10: ヘルプに作成ツールと底本が 4 言語で出る', ok, detail);
+  closeBook();
+  T('10: 本を閉じると空に戻る', state.bookOrigin === '' && state.bookAozoraSource === '');
+  return openFixture('notae3.epub');
+})
+.then(function () {
+  T('10: id が違えば AozoraEpub3 とみなさない', state.bookOrigin === '', state.bookOrigin);
+  T('10: 判定が外れた本では奥付も読まない', state.bookSourceSite === '' && state.bookAozoraSource === '',
+    state.bookSourceSite + '/' + state.bookAozoraSource);
+  updateHelpContent();
+  T('10: ヘルプに作成ツールを出さない', document.getElementById('modal-body').innerHTML.indexOf('AozoraEpub3') < 0);
+})
+
 // ══ 後片付け ═════════════════════════════════════════════════════
 .then(function () {
   closeBook();
