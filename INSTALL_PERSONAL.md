@@ -15,7 +15,7 @@
 5. 取得したクライアント ID を次のコマンドで両 HTML に反映する。
 
 ```powershell
-.\scripts\configure-google-drive.ps1 -ClientId '取得したクライアントID.apps.googleusercontent.com'
+python scripts/configure-google-drive.py '取得したクライアントID.apps.googleusercontent.com'
 node tests/lib/syntax-check.js yomikake.html yomikake_ios.html
 git add yomikake.html yomikake_ios.html
 git commit -m "Configure personal Google Drive sync"
