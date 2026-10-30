@@ -6,6 +6,12 @@
 - Google Cloud プロジェクト: `yomikake` / `silicon-smithy-513201-s2`
 - GitHub Pages: `main` / `/ (root)`、HTTPS
 
+2026-10-30 に作者の v2.34.0（`c1d9f0b`）を取得し、独立リポジトリを作成。
+Drive API、外部・テストモード、テストユーザー、ウェブ用 OAuth クライアント、
+`drive.appdata` の登録と両 HTML への ID 設定を実施済み。
+残る初回操作は、各端末でのインストールと Google アカウントのアクセス許可。
+Android 実機での端末間同期確認は利用者が行う。
+
 ## Google Drive の設定（初回）
 
 1. Google Cloud の上記プロジェクトで Google Drive API を有効にする。
