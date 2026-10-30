@@ -59,16 +59,6 @@ git push origin main
 
 ## 作者の更新を取り込む
 
-`origin` は自分用、`upstream` は作者用。設定をコミットして作業ツリーをクリーンにしてから実行する。
-
-```powershell
-git fetch upstream
-git merge upstream/main
-# 競合した場合は変更内容を確認して解決する。
-# GOOGLE_CLIENT_ID が自分の ID のままか両 HTML で確認する。
-node tests/lib/syntax-check.js yomikake.html yomikake_ios.html
-node --check sw.js
-git push origin main
-```
-
-Pages の反映後にアプリをオンラインで開き直す。サイトデータはしおり・本のキャッシュも消えるため、更新のために消去しない。
+実際のクライアント ID・公開 URL・更新コマンド・競合時の対処は
+[個人用アップデート手順](UPDATE_PERSONAL.md) にまとめてある。
+`origin` は自分用、`upstream` は作者用。通常の更新で Google Cloud の再設定は不要。
